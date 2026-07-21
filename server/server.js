@@ -22,24 +22,31 @@ app.get("/appointments", (req, res) => {
   res.json(appointments);
 });
 app.post("/appointments", (req, res) => {
-  const newAppointment = req.body;
+  console.log(req.body);
+  const newAppointment = {
+    id: appointments.length + 1,
+    ...req.body,
+  };
 
   appointments.push(newAppointment);
 
-  res.status(201).json({
-    message: "Appointment added successfully!",
-    appointment: newAppointment,
-  });
+  res.status(201).json(newAppointment);
 });
+
 app.delete("/appointments/:id", (req, res) => {
   const id = parseInt(req.params.id);
+
+  console.log("Deleting ID:", id);
 
   appointments = appointments.filter(
     (appointment) => appointment.id !== id
   );
 
-  res.json({
+  console.log("Remaining appointments:", appointments);
+
+  res.status(200).json({
     message: "Appointment deleted successfully!",
+    appointments,
   });
 });
 app.put("/appointments/:id", (req, res) => {
@@ -67,5 +74,5 @@ app.put("/appointments/:id", (req, res) => {
   });
 });
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log("Server is running on port ${PORT}");
 });
