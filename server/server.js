@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 
+console.log("SERVER DOSYASI ÇALIŞTI");
+
 const app = express();
 const PORT = 5000;
 
@@ -12,9 +14,9 @@ let appointments = [
     name: "Yağız",
     date: "2026-07-21",
     time: "14:00",
+    chair: 1,
   },
 ];
-
 app.get("/", (req, res) => {
   res.send("Server is running!");
 });
@@ -22,7 +24,7 @@ app.get("/appointments", (req, res) => {
   res.json(appointments);
 });
 app.post("/appointments", (req, res) => {
-  console.log(req.body);
+  console.log("REQ BODY:", req.body);
   const newAppointment = {
     id: appointments.length + 1,
     ...req.body,
@@ -74,5 +76,5 @@ app.put("/appointments/:id", (req, res) => {
   });
 });
 app.listen(PORT, () => {
-  console.log("Server is running on port ${PORT}");
+  console.log(`Server is running on port ${PORT}`);
 });

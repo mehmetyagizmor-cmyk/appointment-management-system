@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import WeeklySchedule from "./components/WeeklySchedule";
 
 function App() {
   const [appointments, setAppointments] = useState([]);
@@ -6,6 +7,7 @@ function App() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const [chair, setChair] = useState(1);
 
   useEffect(() => {
     fetch("http://localhost:5000/appointments")
@@ -30,10 +32,13 @@ function App() {
           name,
           date,
           time,
+          chair,
         }),
       });
 
       const newAppointment = await response.json();
+
+      console.log(newAppointment);
 
       setAppointments([...appointments, newAppointment]);
 
@@ -57,6 +62,7 @@ const response = await fetch(
       name,
       date,
       time,
+      chair,
     }),
   }
 );
@@ -110,6 +116,13 @@ setTime("");
           value={time}
           onChange={(e) => setTime(e.target.value)}
         />
+        <select
+  value={chair}
+  onChange={(e) => setChair(Number(e.target.value))}
+>
+  <option value={1}>Chair 1</option>
+  <option value={2}>Chair 2</option>
+</select>
        
         <button onClick={editingId ? updateAppointment : addAppointment}>
   {editingId ? "Update Appointment" : "Add Appointment"}
@@ -123,12 +136,14 @@ setTime("");
           <h3>{appointment.name}</h3>
           <p>Date: {appointment.date}</p>
           <p>Time: {appointment.time}</p>
+          <p>Chair: {appointment.chair}</p>
          <button
   onClick={() => {
     setEditingId(appointment.id);
     setName(appointment.name);
     setDate(appointment.date);
     setTime(appointment.time);
+    setChair(appointment.chair);
   }}
 >
   Edit
@@ -140,6 +155,7 @@ setTime("");
           <hr />
         </div>
       ))}
+      <WeeklySchedule />
     </div>
   );
 }
