@@ -8,6 +8,7 @@ function App() {
   const [time, setTime] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [chair, setChair] = useState(1);
+  const [selectedSlot, setSelectedSlot] = useState(null);
 
   useEffect(() => {
     fetch("http://localhost:5000/appointments")
@@ -155,7 +156,12 @@ setTime("");
           <hr />
         </div>
       ))}
-      <WeeklySchedule />
+      <WeeklySchedule
+  appointments={appointments}
+  setDate={setDate}
+  setTime={setTime}
+  setChair={setChair}
+/>
     </div>
   );
 }
