@@ -1,14 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-const days = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+const DAY_LABELS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
 
 const hours = [
   "09:00",
@@ -23,160 +15,177 @@ const hours = [
   "18:00",
 ];
 
-function WeeklySchedule({ appointments }) {
+function getMonday(date) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0 = Pazar
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function toISODate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatDayNumber(date) {
+  return date.toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+}
+
+function formatWeekRange(monday) {
+  const sunday = addDays(monday, 6);
+  const sameMonth = monday.getMonth() === sunday.getMonth();
+  const startLabel = monday.toLocaleDateString("tr-TR", {
+    day: "numeric",
+    month: sameMonth ? undefined : "short",
+  });
+  const endLabel = sunday.toLocaleDateString("tr-TR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  return `${startLabel} – ${endLabel}`;
+}
+
+function WeeklySchedule({ appointments, onSlotClick, onAppointmentClick }) {
   const [chair, setChair] = useState(1);
+  const [weekStart, setWeekStart] = useState(getMonday(new Date()));
 
-  const getAppointment = (day, hour) => {
-    return appointments.find((appointment) => {
-      const appointmentDay = new Date(appointment.date).toLocaleDateString(
-        "en-US",
-        { weekday: "long" }
-      );
+  const weekDates = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart]
+  );
 
-      return (
-        appointmentDay === day &&
-        appointment.time === hour &&
-        appointment.chair === chair
-      );
-    });
-  };
+  const todayISO = toISODate(new Date());
+  const isCurrentWeek = weekDates.some((d) => toISODate(d) === todayISO);
 
-  const handleClick = (appointment) => {
-    if (!appointment) return;
-
-    alert(
-      `Name: ${appointment.name}
-Date: ${appointment.date}
-Time: ${appointment.time}
-Chair: ${appointment.chair}`
+  const getAppointment = (dateISO, hour) => {
+    return appointments.find(
+      (a) =>
+        a.date === dateISO && a.time === hour && Number(a.chair) === chair
     );
   };
 
+  const handleCellClick = (dateISO, hour) => {
+    const appointment = getAppointment(dateISO, hour);
+    if (appointment) {
+      onAppointmentClick?.(appointment);
+    } else {
+      onSlotClick?.(dateISO, hour, chair);
+    }
+  };
+
   return (
-    <div style={{ marginTop: "40px" }}>
-      <h2
-        style={{
-          textAlign: "center",
-          marginBottom: "20px",
-          color: "#2c3e50",
-          fontSize: "32px",
-        }}
-      >
-        💈 Weekly Appointment Schedule
-      </h2>
+    <div className="schedule">
+      <div className="schedule-header">
+        <div>
+          <h2>Haftalık Program</h2>
+          <p className="week-range">{formatWeekRange(weekStart)}</p>
+        </div>
 
-      <div style={{ marginBottom: "20px", textAlign: "center" }}>
-        <button
-          onClick={() => setChair(1)}
-          style={{
-            backgroundColor: chair === 1 ? "#3498db" : "#ddd",
-            color: chair === 1 ? "white" : "black",
-            padding: "10px 20px",
-            border: "none",
-            borderRadius: "8px",
-            cursor: "pointer",
-          }}
-        >
-          💺 Chair 1
-        </button>
+        <div className="schedule-controls">
+          <div className="chair-tabs">
+            <button
+              className={`chair-tab ${chair === 1 ? "active" : ""}`}
+              onClick={() => setChair(1)}
+            >
+              1. Koltuk
+            </button>
+            <button
+              className={`chair-tab ${chair === 2 ? "active" : ""}`}
+              onClick={() => setChair(2)}
+            >
+              2. Koltuk
+            </button>
+          </div>
 
-        <button
-          onClick={() => setChair(2)}
-          style={{
-            marginLeft: "10px",
-            backgroundColor: chair === 2 ? "#3498db" : "#ddd",
-            color: chair === 2 ? "white" : "black",
-            padding: "10px 20px",
-            border: "none",
-            borderRadius: "8px",
-            cursor: "pointer",
-          }}
-        >
-          💺 Chair 2
-        </button>
+          <div className="week-nav">
+            <button
+              className="btn btn-ghost"
+              onClick={() => setWeekStart(addDays(weekStart, -7))}
+              aria-label="Önceki hafta"
+            >
+              ‹
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setWeekStart(getMonday(new Date()))}
+              disabled={isCurrentWeek}
+            >
+              Bugün
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setWeekStart(addDays(weekStart, 7))}
+              aria-label="Sonraki hafta"
+            >
+              ›
+            </button>
+          </div>
+        </div>
       </div>
 
-      <table
-        cellPadding="10"
-        style={{
-          borderCollapse: "collapse",
-          margin: "0 auto",
-          boxShadow: "0 4px 10px rgba(0,0,0,0.15)",
-        }}
-      >
-        <thead>
-          <tr>
-            <th
-              style={{
-                backgroundColor: "#2c3e50",
-                color: "white",
-                padding: "12px",
-              }}
-            >
-              Day
-            </th>
-
-            {hours.map((hour) => (
-              <th
-                key={hour}
-                style={{
-                  backgroundColor: "#2c3e50",
-                  color: "white",
-                  padding: "12px",
-                }}
-              >
-                {hour}
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        <tbody>
-          {days.map((day) => (
-            <tr key={day}>
-              <td
-                style={{
-                  backgroundColor: "#ecf0f1",
-                  fontWeight: "bold",
-                  textAlign: "center",
-                  width: "120px",
-                }}
-              >
-                {day}
-              </td>
-
-              {hours.map((hour) => {
-                const appointment = getAppointment(day, hour);
-
+      <div className="schedule-scroll">
+        <table className="schedule-table">
+          <thead>
+            <tr>
+              <th className="corner-cell" />
+              {weekDates.map((date, i) => {
+                const iso = toISODate(date);
+                const isToday = iso === todayISO;
                 return (
-                  <td
-                    key={hour}
-                    onClick={() => handleClick(appointment)}
-                    style={{
-                      backgroundColor: appointment ? "#ff6b6b" : "#90ee90",
-                      textAlign: "center",
-                      fontWeight: "bold",
-                      minWidth: "80px",
-                      height: "60px",
-                      cursor: "pointer",
-                      transition: "0.2s",
-                      userSelect: "none",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.opacity = "0.8";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.opacity = "1";
-                    }}
-                  >
-                    {appointment ? appointment.name : ""}
-                  </td>
+                  <th key={iso} className={isToday ? "day-header today" : "day-header"}>
+                    <span className="day-name">{DAY_LABELS[i]}</span>
+                    <span className="day-number">{formatDayNumber(date)}</span>
+                  </th>
                 );
               })}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody>
+            {hours.map((hour) => (
+              <tr key={hour}>
+                <td className="hour-cell">{hour}</td>
+                {weekDates.map((date) => {
+                  const iso = toISODate(date);
+                  const appointment = getAppointment(iso, hour);
+                  const isToday = iso === todayISO;
+                  return (
+                    <td
+                      key={iso}
+                      onClick={() => handleCellClick(iso, hour)}
+                      className={`slot-cell ${appointment ? "booked" : "free"} ${
+                        isToday ? "today-col" : ""
+                      }`}
+                      title={
+                        appointment
+                          ? `${appointment.name} — düzenlemek için tıklayın`
+                          : "Randevu eklemek için tıklayın"
+                      }
+                    >
+                      {appointment ? (
+                        <span className="slot-name">{appointment.name}</span>
+                      ) : (
+                        <span className="slot-plus">+</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
