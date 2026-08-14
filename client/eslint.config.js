@@ -17,5 +17,11 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Bu proje boyunca standart "mount olunca veri çek" deseni kullanılıyor
+      // (useEffect içinde setLoading(true) ile başlayan async fetch fonksiyonları).
+      // Bu kural o yaygın deseni hatalı işaretliyor; bilinçli olarak kapatıldı.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])

@@ -1,19 +1,7 @@
 import { useMemo, useState } from "react";
 
 const DAY_LABELS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
-
-const hours = [
-  "09:00",
-  "10:00",
-  "11:00",
-  "12:00",
-  "13:00",
-  "14:00",
-  "15:00",
-  "16:00",
-  "17:00",
-  "18:00",
-];
+const WEEKDAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 function getMonday(date) {
   const d = new Date(date);
@@ -56,13 +44,66 @@ function formatWeekRange(monday) {
   return `${startLabel} – ${endLabel}`;
 }
 
-function WeeklySchedule({ appointments, onSlotClick, onAppointmentClick }) {
-  const [chair, setChair] = useState(1);
+function toMinutes(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function buildHourGrid(workingHours, slotMinutes) {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const key of WEEKDAY_KEYS) {
+    const day = workingHours?.[key];
+    if (!day || day.closed || !day.open || !day.close) continue;
+    min = Math.min(min, toMinutes(day.open));
+    max = Math.max(max, toMinutes(day.close));
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) {
+    // Varsayılan aralık
+    min = 9 * 60;
+    max = 18 * 60;
+  }
+  const step = slotMinutes || 60;
+  const hours = [];
+  for (let t = min; t < max; t += step) {
+    const h = String(Math.floor(t / 60)).padStart(2, "0");
+    const m = String(t % 60).padStart(2, "0");
+    hours.push(`${h}:${m}`);
+  }
+  return hours;
+}
+
+function isWithinWorkingHours(dateISO, hour, workingHours) {
+  const key = WEEKDAY_KEYS[(new Date(`${dateISO}T00:00:00`).getDay() + 6) % 7];
+  const day = workingHours?.[key];
+  if (!day || day.closed || !day.open || !day.close) return false;
+  const t = toMinutes(hour);
+  return t >= toMinutes(day.open) && t < toMinutes(day.close);
+}
+
+function WeeklySchedule({
+  appointments,
+  resources,
+  workingHours,
+  slotMinutes,
+  onSlotClick,
+  onAppointmentClick,
+}) {
+  const [resourceId, setResourceId] = useState(resources[0]?.id ?? null);
   const [weekStart, setWeekStart] = useState(getMonday(new Date()));
+
+  const activeResourceId = resources.some((r) => r.id === resourceId)
+    ? resourceId
+    : resources[0]?.id ?? null;
 
   const weekDates = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
     [weekStart]
+  );
+
+  const hours = useMemo(
+    () => buildHourGrid(workingHours, slotMinutes),
+    [workingHours, slotMinutes]
   );
 
   const todayISO = toISODate(new Date());
@@ -71,16 +112,19 @@ function WeeklySchedule({ appointments, onSlotClick, onAppointmentClick }) {
   const getAppointment = (dateISO, hour) => {
     return appointments.find(
       (a) =>
-        a.date === dateISO && a.time === hour && Number(a.chair) === chair
+        a.date === dateISO &&
+        a.time === hour &&
+        Number(a.resourceId) === Number(activeResourceId)
     );
   };
 
   const handleCellClick = (dateISO, hour) => {
+    if (!isWithinWorkingHours(dateISO, hour, workingHours)) return;
     const appointment = getAppointment(dateISO, hour);
     if (appointment) {
       onAppointmentClick?.(appointment);
     } else {
-      onSlotClick?.(dateISO, hour, chair);
+      onSlotClick?.(dateISO, hour, activeResourceId);
     }
   };
 
@@ -94,18 +138,15 @@ function WeeklySchedule({ appointments, onSlotClick, onAppointmentClick }) {
 
         <div className="schedule-controls">
           <div className="chair-tabs">
-            <button
-              className={`chair-tab ${chair === 1 ? "active" : ""}`}
-              onClick={() => setChair(1)}
-            >
-              1. Koltuk
-            </button>
-            <button
-              className={`chair-tab ${chair === 2 ? "active" : ""}`}
-              onClick={() => setChair(2)}
-            >
-              2. Koltuk
-            </button>
+            {resources.map((r) => (
+              <button
+                key={r.id}
+                className={`chair-tab ${activeResourceId === r.id ? "active" : ""}`}
+                onClick={() => setResourceId(r.id)}
+              >
+                {r.name}
+              </button>
+            ))}
           </div>
 
           <div className="week-nav">
@@ -134,58 +175,71 @@ function WeeklySchedule({ appointments, onSlotClick, onAppointmentClick }) {
         </div>
       </div>
 
-      <div className="schedule-scroll">
-        <table className="schedule-table">
-          <thead>
-            <tr>
-              <th className="corner-cell" />
-              {weekDates.map((date, i) => {
-                const iso = toISODate(date);
-                const isToday = iso === todayISO;
-                return (
-                  <th key={iso} className={isToday ? "day-header today" : "day-header"}>
-                    <span className="day-name">{DAY_LABELS[i]}</span>
-                    <span className="day-number">{formatDayNumber(date)}</span>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-
-          <tbody>
-            {hours.map((hour) => (
-              <tr key={hour}>
-                <td className="hour-cell">{hour}</td>
-                {weekDates.map((date) => {
+      {resources.length === 0 ? (
+        <p className="empty-state">
+          Önce Kaynaklar sayfasından en az bir koltuk/personel eklemelisiniz.
+        </p>
+      ) : hours.length === 0 ? (
+        <p className="empty-state">
+          Çalışma saatleri tanımlı değil. Ayarlar sayfasından ekleyebilirsiniz.
+        </p>
+      ) : (
+        <div className="schedule-scroll">
+          <table className="schedule-table">
+            <thead>
+              <tr>
+                <th className="corner-cell" />
+                {weekDates.map((date, i) => {
                   const iso = toISODate(date);
-                  const appointment = getAppointment(iso, hour);
                   const isToday = iso === todayISO;
                   return (
-                    <td
-                      key={iso}
-                      onClick={() => handleCellClick(iso, hour)}
-                      className={`slot-cell ${appointment ? "booked" : "free"} ${
-                        isToday ? "today-col" : ""
-                      }`}
-                      title={
-                        appointment
-                          ? `${appointment.name} — düzenlemek için tıklayın`
-                          : "Randevu eklemek için tıklayın"
-                      }
-                    >
-                      {appointment ? (
-                        <span className="slot-name">{appointment.name}</span>
-                      ) : (
-                        <span className="slot-plus">+</span>
-                      )}
-                    </td>
+                    <th key={iso} className={isToday ? "day-header today" : "day-header"}>
+                      <span className="day-name">{DAY_LABELS[i]}</span>
+                      <span className="day-number">{formatDayNumber(date)}</span>
+                    </th>
                   );
                 })}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+
+            <tbody>
+              {hours.map((hour) => (
+                <tr key={hour}>
+                  <td className="hour-cell">{hour}</td>
+                  {weekDates.map((date) => {
+                    const iso = toISODate(date);
+                    const appointment = getAppointment(iso, hour);
+                    const isToday = iso === todayISO;
+                    const withinHours = isWithinWorkingHours(iso, hour, workingHours);
+                    return (
+                      <td
+                        key={iso}
+                        onClick={() => handleCellClick(iso, hour)}
+                        className={`slot-cell ${
+                          !withinHours ? "closed" : appointment ? "booked" : "free"
+                        } ${isToday ? "today-col" : ""}`}
+                        title={
+                          !withinHours
+                            ? "Çalışma saatleri dışında"
+                            : appointment
+                            ? `${appointment.name} — düzenlemek için tıklayın`
+                            : "Randevu eklemek için tıklayın"
+                        }
+                      >
+                        {appointment ? (
+                          <span className="slot-name">{appointment.name}</span>
+                        ) : withinHours ? (
+                          <span className="slot-plus">+</span>
+                        ) : null}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
