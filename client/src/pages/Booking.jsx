@@ -1,16 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addDaysISO(iso, n) {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-}
+import PublicWeeklySchedule from "../components/PublicWeeklySchedule";
 
 function formatDateLabel(iso) {
   const d = new Date(`${iso}T00:00:00`);
@@ -28,9 +19,7 @@ function Booking() {
 
   const [serviceId, setServiceId] = useState(null);
   const [resourceId, setResourceId] = useState(null);
-  const [date, setDate] = useState(todayISO());
-  const [slots, setSlots] = useState([]);
-  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [date, setDate] = useState(null);
   const [time, setTime] = useState(null);
 
   const [form, setForm] = useState({ name: "", phone: "", note: "" });
@@ -58,33 +47,15 @@ function Booking() {
   }, []);
 
   useEffect(() => {
-    if (!resourceId || !date) return;
-    let cancelled = false;
-    async function loadSlots() {
-      setSlotsLoading(true);
-      setTime(null);
-      try {
-        const data = await api.get(
-          `/api/public/slots?date=${date}&resourceId=${resourceId}`,
-          { auth: false }
-        );
-        if (!cancelled) setSlots(data.slots || []);
-      } catch {
-        if (!cancelled) setSlots([]);
-      } finally {
-        if (!cancelled) setSlotsLoading(false);
-      }
-    }
-    loadSlots();
-    return () => {
-      cancelled = true;
-    };
-  }, [resourceId, date]);
+    // Kaynak değişince önceden seçilmiş tarih/saat artık geçersiz olabilir.
+    setDate(null);
+    setTime(null);
+  }, [resourceId]);
 
-  const nextDays = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDaysISO(todayISO(), i)),
-    []
-  );
+  function handleSlotSelect(selectedDate, selectedTime) {
+    setDate(selectedDate);
+    setTime(selectedTime);
+  }
 
   const selectedService = business?.services.find((s) => s.id === serviceId);
   const selectedResource = business?.resources.find((r) => r.id === resourceId);
@@ -94,7 +65,7 @@ function Booking() {
     if (!form.name.trim()) errors.push("İsminizi giriniz.");
     if (!form.phone.trim()) errors.push("Telefon numaranızı giriniz.");
     if (!resourceId) errors.push(`${business?.resourceLabel || "Kaynak"} seçiniz.`);
-    if (!time) errors.push("Saat seçiniz.");
+    if (!date || !time) errors.push("Tarih ve saat seçiniz.");
     return errors;
   }
 
@@ -223,36 +194,19 @@ function Booking() {
           </div>
 
           <h2>3. Tarih ve saat seçin</h2>
-          <div className="day-strip">
-            {nextDays.map((d) => (
-              <button
-                type="button"
-                key={d}
-                className={`day-pill ${date === d ? "active" : ""}`}
-                onClick={() => setDate(d)}
-              >
-                {formatDateLabel(d)}
-              </button>
-            ))}
-          </div>
-
-          {slotsLoading ? (
-            <p className="empty-state">Saatler yükleniyor…</p>
-          ) : slots.length === 0 ? (
-            <p className="empty-state">Bu tarihte müsait saat yok, başka bir gün deneyin.</p>
+          {resourceId ? (
+            <PublicWeeklySchedule
+              resourceId={resourceId}
+              workingHours={business.workingHours}
+              slotMinutes={business.slotMinutes}
+              value={{ date, time }}
+              onSelect={handleSlotSelect}
+            />
           ) : (
-            <div className="slot-grid">
-              {slots.map((t) => (
-                <button
-                  type="button"
-                  key={t}
-                  className={`slot-pill ${time === t ? "active" : ""}`}
-                  onClick={() => setTime(t)}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
+            <p className="empty-state">
+              Saat seçebilmek için önce {(business.resourceLabel || "kaynak").toLowerCase()}{" "}
+              seçin.
+            </p>
           )}
         </div>
 
@@ -291,8 +245,9 @@ function Booking() {
             <p>{selectedService ? selectedService.name : "Hizmet seçilmedi"}</p>
             <p>{selectedResource ? selectedResource.name : "—"}</p>
             <p>
-              {formatDateLabel(date)}
-              {time ? ` · ${time}` : ""}
+              {date && time
+                ? `${formatDateLabel(date)} · ${time}`
+                : "Tarih ve saat seçilmedi"}
             </p>
           </div>
 
