@@ -1,8 +1,11 @@
 import { Route, Routes } from "react-router-dom";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
+import CustomerLogin from "./pages/CustomerLogin";
 import Booking from "./pages/Booking";
+import MyAppointments from "./pages/MyAppointments";
 import ProtectedRoute from "./components/ProtectedRoute";
+import CustomerProtectedRoute from "./components/CustomerProtectedRoute";
 import AdminLayout from "./components/AdminLayout";
 import Dashboard from "./pages/admin/Dashboard";
 import Appointments from "./pages/admin/Appointments";
@@ -16,7 +19,16 @@ function App() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/giris" element={<Login />} />
+      <Route path="/musteri-giris" element={<CustomerLogin />} />
       <Route path="/randevu-al" element={<Booking />} />
+      <Route
+        path="/randevularim"
+        element={
+          <CustomerProtectedRoute>
+            <MyAppointments />
+          </CustomerProtectedRoute>
+        }
+      />
 
       <Route
         path="/panel"

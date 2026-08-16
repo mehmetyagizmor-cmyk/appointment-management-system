@@ -275,6 +275,18 @@ body {
   transform: translateY(-1px);
 }
 
+.btn-whatsapp {
+  color: #1f9d55;
+  border-color: rgba(31, 157, 85, 0.35);
+}
+
+.btn-whatsapp:hover:not(:disabled) {
+  background: rgba(31, 157, 85, 0.1);
+  border-color: #1f9d55;
+  color: #1f9d55;
+  transform: translateY(-1px);
+}
+
 .btn-danger {
   background: var(--oxblood-bg);
   color: var(--oxblood);
@@ -693,6 +705,82 @@ body {
   display: flex;
   gap: 8px;
   margin-left: auto;
+}
+
+.modal-lg {
+  max-width: 560px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.modal-section {
+  border-top: 1px solid var(--cream-dark);
+  padding-top: 14px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-section h3 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  margin: 0;
+}
+
+.modal-section-hint {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.checkbox-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.checkbox-list-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.time-off-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.time-off-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: var(--cream);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.time-off-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.3fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 620px) {
+  .time-off-form {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 /* ---------- Toast ---------- */
@@ -1290,6 +1378,36 @@ select:focus-visible {
   margin: 0 0 22px;
 }
 
+.auth-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 18px;
+  background: var(--cream);
+  border: 1px solid var(--cream-dark);
+  border-radius: var(--radius-sm);
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 8px 10px;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 3px);
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.auth-tab.active {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.08));
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;
@@ -1303,6 +1421,12 @@ select:focus-visible {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--ink-soft);
+}
+
+.auth-optional {
+  font-weight: 400;
+  color: var(--ink-soft);
+  opacity: 0.75;
 }
 
 .auth-form input {
@@ -1376,6 +1500,56 @@ select:focus-visible {
   color: var(--ink-soft);
   font-size: 14.5px;
   margin: 0;
+}
+
+.booking-account-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  border: 1px solid var(--cream-dark);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.booking-account-strip a {
+  color: var(--brass);
+  font-weight: 600;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brass);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.booking-customer-card {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--cream);
+  border: 1px solid var(--cream-dark);
+  margin-bottom: 14px;
+}
+
+.booking-customer-card p {
+  margin: 0;
+}
+
+.booking-customer-phone {
+  color: var(--ink-soft);
+  font-size: 13px;
+  margin-top: 2px !important;
 }
 
 .booking-grid {
@@ -1564,6 +1738,74 @@ select:focus-visible {
 
 .confirm-note {
   margin-bottom: 22px !important;
+}
+
+/* ---------- Randevularım ---------- */
+
+.my-appointments-page {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.my-appointments-page h2 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+.my-appointments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.my-appointment-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+}
+
+.my-appointment-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.my-appointment-date {
+  font-weight: 600;
+  font-size: 14.5px;
+  margin: 0;
+}
+
+.my-appointment-meta {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.my-appointment-note {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin: 2px 0 0;
+}
+
+.my-appointment-card .status-pill {
+  margin-top: 4px;
+  align-self: flex-start;
+}
+
+.my-appointment-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 /* =====================================================

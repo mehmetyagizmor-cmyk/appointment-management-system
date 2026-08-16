@@ -1,14 +1,18 @@
 export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-const TOKEN_KEY = "rys_token";
+const TOKEN_KEYS = {
+  admin: "rys_token",
+  customer: "rys_customer_token",
+};
 
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
+export function getToken(type = "admin") {
+  return localStorage.getItem(TOKEN_KEYS[type]);
 }
 
-export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+export function setToken(token, type = "admin") {
+  const key = TOKEN_KEYS[type];
+  if (token) localStorage.setItem(key, token);
+  else localStorage.removeItem(key);
 }
 
 class ApiError extends Error {
@@ -21,8 +25,9 @@ class ApiError extends Error {
 
 async function request(path, { method = "GET", body, auth = true } = {}) {
   const headers = { "Content-Type": "application/json" };
+  const tokenType = auth === "customer" ? "customer" : "admin";
   if (auth) {
-    const token = getToken();
+    const token = getToken(tokenType);
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
@@ -49,7 +54,7 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
 
   if (!response.ok) {
     if (response.status === 401 && auth) {
-      setToken(null);
+      setToken(null, tokenType);
     }
     throw new ApiError(
       data?.message || "Bir hata oluştu.",

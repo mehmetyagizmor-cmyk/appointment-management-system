@@ -59,7 +59,69 @@ db.exec(`
     status TEXT NOT NULL DEFAULT 'confirmed',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS customers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Bir personelin/kaynağın belirli tarih aralığında izinli olduğunu belirtir.
+  -- O aralıktaki tüm saatler, çalışma programı ne olursa olsun dolu gösterilir.
+  CREATE TABLE IF NOT EXISTS resource_time_off (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    resource_id INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Bir kaynağın hangi hizmetleri verebildiğini belirtir. Bir kaynağın hiç
+  -- satırı yoksa "tüm hizmetleri verebilir" anlamına gelir (geriye dönük uyum).
+  CREATE TABLE IF NOT EXISTS resource_services (
+    resource_id INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    PRIMARY KEY (resource_id, service_id)
+  );
 `);
+
+// ---------- Basit şema göçleri (mevcut veritabanları için) ----------
+
+const appointmentColumns = db
+  .prepare("PRAGMA table_info(appointments)")
+  .all()
+  .map((c) => c.name);
+if (!appointmentColumns.includes("customer_id")) {
+  db.exec(
+    "ALTER TABLE appointments ADD COLUMN customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL"
+  );
+}
+if (!appointmentColumns.includes("email")) {
+  db.exec("ALTER TABLE appointments ADD COLUMN email TEXT NOT NULL DEFAULT ''");
+}
+if (!appointmentColumns.includes("reminder_sent")) {
+  db.exec("ALTER TABLE appointments ADD COLUMN reminder_sent INTEGER NOT NULL DEFAULT 0");
+}
+
+const customerColumns = db
+  .prepare("PRAGMA table_info(customers)")
+  .all()
+  .map((c) => c.name);
+if (!customerColumns.includes("email")) {
+  db.exec("ALTER TABLE customers ADD COLUMN email TEXT NOT NULL DEFAULT ''");
+}
+
+const resourceColumns = db
+  .prepare("PRAGMA table_info(resources)")
+  .all()
+  .map((c) => c.name);
+if (!resourceColumns.includes("working_hours")) {
+  // NULL = işletme geneli çalışma saatlerini kullan (varsayılan davranış).
+  db.exec("ALTER TABLE resources ADD COLUMN working_hours TEXT");
+}
 
 // ---------- Varsayılan çalışma saatleri ----------
 

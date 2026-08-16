@@ -3,6 +3,12 @@ import WeeklySchedule from "../../components/WeeklySchedule";
 import { api, ApiError } from "../../api/client";
 import { useToast } from "../../hooks/useToast";
 import { useSettings } from "../../hooks/useSettings";
+import { buildWhatsAppLink } from "../../utils/whatsapp";
+
+function formatDateLabelTR(iso) {
+  const d = new Date(`${iso}T00:00:00`);
+  return d.toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
+}
 
 const EMPTY_FORM = { name: "", phone: "", note: "", date: "", time: "", resourceId: null, serviceId: null };
 
@@ -254,6 +260,20 @@ function Appointments() {
                   )}
                 </div>
                 <div className="appointment-card-actions">
+                  {appointment.phone && (
+                    <a
+                      className="btn btn-ghost btn-whatsapp"
+                      href={buildWhatsAppLink(
+                        appointment.phone,
+                        `Merhaba ${appointment.name}, ${formatDateLabelTR(appointment.date)} tarihinde saat ${appointment.time} için randevunuz hatırlatılır. - ${settings?.businessName || ""}`
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="WhatsApp'tan yaz"
+                    >
+                      WhatsApp
+                    </a>
+                  )}
                   <button className="btn btn-ghost" onClick={() => openEditModal(appointment)}>
                     Düzenle
                   </button>
@@ -320,14 +340,17 @@ function Appointments() {
                   <select
                     value={form.resourceId ?? ""}
                     onChange={(e) =>
-                      setForm({ ...form, resourceId: Number(e.target.value) })
+                      setForm({ ...form, resourceId: Number(e.target.value) || null })
                     }
                   >
-                    {resources.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
+                    <option value="">Seçilmedi</option>
+                    {resources
+                      .filter((r) => !form.serviceId || r.serviceIds.includes(form.serviceId))
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
                   </select>
                 </label>
 
@@ -335,9 +358,17 @@ function Appointments() {
                   Hizmet
                   <select
                     value={form.serviceId ?? ""}
-                    onChange={(e) =>
-                      setForm({ ...form, serviceId: Number(e.target.value) || null })
-                    }
+                    onChange={(e) => {
+                      const newServiceId = Number(e.target.value) || null;
+                      const currentResource = resources.find((r) => r.id === form.resourceId);
+                      const stillEligible =
+                        !newServiceId || currentResource?.serviceIds.includes(newServiceId);
+                      setForm({
+                        ...form,
+                        serviceId: newServiceId,
+                        resourceId: stillEligible ? form.resourceId : null,
+                      });
+                    }}
                   >
                     <option value="">Seçilmedi</option>
                     {services.map((s) => (

@@ -2,17 +2,7 @@ import { useEffect, useState } from "react";
 import { useSettings } from "../../hooks/useSettings";
 import { api, ApiError } from "../../api/client";
 import { useToast } from "../../hooks/useToast";
-
-const DAY_LABELS = {
-  mon: "Pazartesi",
-  tue: "Salı",
-  wed: "Çarşamba",
-  thu: "Perşembe",
-  fri: "Cuma",
-  sat: "Cumartesi",
-  sun: "Pazar",
-};
-const DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+import { DAY_LABELS, DAY_ORDER } from "../../constants/weekdays";
 
 function Settings() {
   const { settings, loading, setSettings } = useSettings();
