@@ -8,7 +8,7 @@ import { buildWhatsAppLink } from "../utils/whatsapp";
 import { formatDateLabel } from "../utils/date";
 import PublicWeeklySchedule from "../components/PublicWeeklySchedule";
 
-function Booking() {
+function Booking({ slug } = {}) {
   const { customer, isAuthenticated: isCustomer, checking: checkingCustomer, logout } =
     useCustomerAuth();
   const location = useLocation();
@@ -35,7 +35,10 @@ function Booking() {
     async function load() {
       setLoading(true);
       try {
-        const data = await api.get("/api/public/business", { auth: false });
+        const data = await api.get(
+          slug ? `/api/public/business/${slug}` : "/api/public/business",
+          { auth: false }
+        );
         setBusiness(data);
 
         // "Tekrar randevu al" ile gelindiyse önceki hizmet/personeli ön doldur
@@ -56,18 +59,22 @@ function Booking() {
             : null;
         const chosenResource = rebookResource ?? eligibleResources?.[0]?.id ?? null;
         if (chosenResource) setResourceId(chosenResource);
-      } catch {
+      } catch (err) {
+        // Slug'lı bir sayfada 404, gerçekten var olmayan bir işletme adresi
+        // anlamına gelir — "sayfayı yenile" demek yanıltıcı olur.
         setLoadError(
-          "İşletme bilgileri yüklenemedi. Lütfen sayfayı yenileyin veya daha sonra tekrar deneyin."
+          slug && err?.status === 404
+            ? "Bu adreste bir işletme bulunamadı. Bağlantıyı kontrol edin."
+            : "İşletme bilgileri yüklenemedi. Lütfen sayfayı yenileyin veya daha sonra tekrar deneyin."
         );
       } finally {
         setLoading(false);
       }
     }
     load();
-    // Sadece ilk yüklemede çalışsın; rebook bilgisi navigasyon anında sabitlenir.
+    // rebook bilgisi navigasyon anında sabitlenir, tekrar tetiklenmemeli.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [slug]);
 
   useEffect(() => {
     // Kaynak değişince önceden seçilmiş tarih/saat artık geçersiz olabilir.

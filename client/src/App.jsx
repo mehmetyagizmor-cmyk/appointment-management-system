@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useParams } from "react-router-dom";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import CustomerLogin from "./pages/CustomerLogin";
@@ -13,6 +13,15 @@ import Services from "./pages/admin/Services";
 import Resources from "./pages/admin/Resources";
 import Settings from "./pages/admin/Settings";
 import NotFound from "./pages/NotFound";
+
+// Faz 3'te kendi kendine kayıt olan her işletme, kendi randevu sayfasına
+// /isletme-slug'i üzerinden ulaşır. React Router, /giris, /panel gibi sabit
+// rotaları bu tek segmentli dinamik rotadan otomatik olarak daha spesifik
+// sayıp önceliklendirdiği için ekleniş sırası önemli değil.
+function BusinessBookingRoute() {
+  const { slug } = useParams();
+  return <Booking slug={slug} />;
+}
 
 function App() {
   return (
@@ -44,6 +53,8 @@ function App() {
         <Route path="kaynaklar" element={<Resources />} />
         <Route path="ayarlar" element={<Settings />} />
       </Route>
+
+      <Route path="/:slug" element={<BusinessBookingRoute />} />
 
       <Route path="*" element={<NotFound />} />
     </Routes>
