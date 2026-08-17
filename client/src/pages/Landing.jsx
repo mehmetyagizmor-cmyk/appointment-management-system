@@ -14,6 +14,8 @@ const CONTENT = {
       title: "Randevu Yönetim Sistemi | Online Randevu & İşletme Paneli",
       description:
         "Kuaför, berber, klinik, spor salonu ve danışmanlık ofisleri için uçtan uca randevu yönetim sistemi. Müşterileriniz 7/24 online randevu alsın, siz tek panelden yönetin.",
+      image: "/og-tr.png",
+      imageAlt: "Randevu Yönetim Sistemi",
     },
     langSwitch: { label: "EN", to: "/en", title: "Switch to English" },
     nav: {
@@ -200,6 +202,8 @@ const CONTENT = {
       title: "Appointment Manager | Online Booking & Business Dashboard",
       description:
         "End-to-end appointment scheduling for salons, barbershops, clinics, gyms and consulting offices. Let clients book online 24/7 while you run everything from one dashboard.",
+      image: "/og-en.png",
+      imageAlt: "Appointment Manager",
     },
     langSwitch: { label: "TR", to: "/", title: "Türkçe'ye geç" },
     nav: {
@@ -399,6 +403,9 @@ function useLandingSeo(t) {
       setMeta('meta[property="og:locale"]', "content", t.ogLocale),
       setMeta('meta[name="twitter:title"]', "content", t.seo.title),
       setMeta('meta[name="twitter:description"]', "content", t.seo.description),
+      setMeta('meta[property="og:image"]', "content", `${SITE_URL}${t.seo.image}`),
+      setMeta('meta[property="og:image:alt"]', "content", t.seo.imageAlt),
+      setMeta('meta[name="twitter:image"]', "content", `${SITE_URL}${t.seo.image}`),
       setMeta('link[rel="canonical"]', "href", `${SITE_URL}${t.path}`),
     ];
 
