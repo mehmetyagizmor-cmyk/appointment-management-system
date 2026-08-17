@@ -154,31 +154,42 @@ function isResourceOnLeave(resourceId, dateISO) {
   return !!row;
 }
 
+// Bir kaynağı, yalnızca belirtilen işletmeye aitse döndürür — admin uçlarında
+// tekrar eden "id ile bul + işletme sahipliğini doğrula" deseni için.
+function getOwnedResource(id, businessId) {
+  return db.prepare("SELECT * FROM resources WHERE id = ? AND business_id = ?").get(id, businessId);
+}
+
 // Bir kaynağın verebildiği hizmetlerin id listesini döndürür. Kaynağın hiç
-// eşleşme satırı yoksa (yapılandırılmamışsa) tüm aktif hizmetleri verebildiği
-// varsayılır (geriye dönük uyumluluk için).
-function getResourceServiceIds(resourceId) {
+// eşleşme satırı yoksa (yapılandırılmamışsa) o işletmenin tüm aktif
+// hizmetlerini verebildiği varsayılır (geriye dönük uyumluluk için).
+function getResourceServiceIds(resourceId, businessId) {
   const rows = db
     .prepare("SELECT service_id FROM resource_services WHERE resource_id = ?")
     .all(resourceId);
   if (rows.length === 0) {
     return db
-      .prepare("SELECT id FROM services WHERE active = 1")
-      .all()
+      .prepare("SELECT id FROM services WHERE active = 1 AND business_id = ?")
+      .all(businessId)
       .map((s) => s.id);
   }
   return rows.map((r) => r.service_id);
 }
 
-function setResourceServiceIds(resourceId, serviceIds) {
+// serviceIds listesini, yalnızca gerçekten o işletmeye ait hizmetlerle
+// sınırlayarak kaydeder (başka bir işletmenin hizmet id'si sessizce elenir).
+function setResourceServiceIds(resourceId, serviceIds, businessId) {
   db.prepare("DELETE FROM resource_services WHERE resource_id = ?").run(resourceId);
   if (!Array.isArray(serviceIds) || serviceIds.length === 0) return;
+  const ownServiceIds = new Set(
+    db.prepare("SELECT id FROM services WHERE business_id = ?").all(businessId).map((s) => s.id)
+  );
   const insert = db.prepare(
     "INSERT OR IGNORE INTO resource_services (resource_id, service_id) VALUES (?, ?)"
   );
   for (const serviceId of serviceIds) {
     const id = Number(serviceId);
-    if (id) insert.run(resourceId, id);
+    if (id && ownServiceIds.has(id)) insert.run(resourceId, id);
   }
 }
 
@@ -205,7 +216,11 @@ function sortedAppointments(rows) {
   });
 }
 
-function validateAppointmentPayload(body) {
+// expectedBusinessId verilirse (admin/müşteri uçlarında olduğu gibi, kimin
+// randevu aldığı zaten biliniyorsa) seçilen kaynağın o işletmeye ait olduğu
+// da doğrulanır. Herkese açık (misafir) uçta bu parametre verilmez — orada
+// işletme, doğrulamadan SONRA seçilen kaynaktan çözülür (çağıran taraf işi).
+function validateAppointmentPayload(body, expectedBusinessId = null) {
   const errors = [];
   const { name, date, time, resourceId, serviceId } = body;
 
@@ -224,16 +239,21 @@ function validateAppointmentPayload(body) {
     errors.push("Kaynak/personel seçiniz.");
   } else {
     const resource = db
-      .prepare("SELECT id FROM resources WHERE id = ? AND active = 1")
+      .prepare("SELECT * FROM resources WHERE id = ? AND active = 1")
       .get(resourceIdNum);
     if (!resource) {
       errors.push("Seçilen kaynak bulunamadı veya pasif.");
+    } else if (expectedBusinessId && resource.business_id !== expectedBusinessId) {
+      errors.push("Seçilen kaynak bu işletmeye ait değil.");
     } else {
       if (date && DATE_PATTERN.test(date) && isResourceOnLeave(resourceIdNum, date)) {
         errors.push("Seçilen kaynak bu tarihte izinli.");
       }
       const serviceIdNum = Number(serviceId);
-      if (serviceIdNum && !getResourceServiceIds(resourceIdNum).includes(serviceIdNum)) {
+      if (
+        serviceIdNum &&
+        !getResourceServiceIds(resourceIdNum, resource.business_id).includes(serviceIdNum)
+      ) {
         errors.push("Seçilen kaynak bu hizmeti vermiyor.");
       }
     }
@@ -256,7 +276,7 @@ function findConflict({ date, time, resourceId }, excludeId = null) {
 // numarasının aynı anda yalnızca bir "aktif" (iptal edilmemiş, tarihi henüz
 // geçmemiş) randevusu olabilir. Hem hesaplı müşteriler hem de misafir randevusu
 // için geçerlidir.
-function findActiveAppointmentForPhone(phone, excludeId = null) {
+function findActiveAppointmentForPhone(phone, businessId, excludeId = null) {
   const now = new Date();
   const todayISO = now.toISOString().slice(0, 10);
   const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(
@@ -266,14 +286,14 @@ function findActiveAppointmentForPhone(phone, excludeId = null) {
   return db
     .prepare(
       `SELECT * FROM appointments
-       WHERE phone = ? AND status != 'cancelled'
+       WHERE phone = ? AND business_id = ? AND status != 'cancelled'
        AND (date > ? OR (date = ? AND time >= ?))
        ${excludeId ? "AND id != ?" : ""}`
     )
     .get(
       ...(excludeId
-        ? [phone, todayISO, todayISO, nowTime, excludeId]
-        : [phone, todayISO, todayISO, nowTime])
+        ? [phone, businessId, todayISO, todayISO, nowTime, excludeId]
+        : [phone, businessId, todayISO, todayISO, nowTime])
     );
 }
 
@@ -478,7 +498,10 @@ app.post("/api/customer/appointments", bookingLimiter, requireCustomerAuth, (req
     .get(req.user.sub);
   if (!customer) return res.status(404).json({ message: "Hesap bulunamadı." });
 
-  const errors = validateAppointmentPayload({ ...req.body, name: customer.name });
+  const errors = validateAppointmentPayload(
+    { ...req.body, name: customer.name },
+    req.user.businessId
+  );
   if (errors.length) {
     return res.status(400).json({ message: "Doğrulama hatası", errors });
   }
@@ -496,7 +519,7 @@ app.post("/api/customer/appointments", bookingLimiter, requireCustomerAuth, (req
     time: req.body.time,
   };
 
-  const activeAppointment = findActiveAppointmentForPhone(payload.phone);
+  const activeAppointment = findActiveAppointmentForPhone(payload.phone, req.user.businessId);
   if (activeAppointment) {
     return res.status(409).json({
       message:
@@ -641,12 +664,14 @@ function resourceToAdminJson(row) {
     name: row.name,
     active: !!row.active,
     workingHours,
-    serviceIds: getResourceServiceIds(row.id),
+    serviceIds: getResourceServiceIds(row.id, row.business_id),
   };
 }
 
 app.get("/api/resources", requireAuth, (req, res) => {
-  const rows = db.prepare("SELECT * FROM resources ORDER BY sort_order, id").all();
+  const rows = db
+    .prepare("SELECT * FROM resources WHERE business_id = ? ORDER BY sort_order, id")
+    .all(req.user.businessId);
   res.json(rows.map(resourceToAdminJson));
 });
 
@@ -655,30 +680,30 @@ app.post("/api/resources", requireAuth, (req, res) => {
   if (!name) return res.status(400).json({ message: "İsim gerekli." });
 
   const maxOrder = db
-    .prepare("SELECT COALESCE(MAX(sort_order), -1) AS m FROM resources")
-    .get().m;
+    .prepare("SELECT COALESCE(MAX(sort_order), -1) AS m FROM resources WHERE business_id = ?")
+    .get(req.user.businessId).m;
   const workingHours =
     req.body?.workingHours && typeof req.body.workingHours === "object"
       ? JSON.stringify(req.body.workingHours)
       : null;
   const result = db
     .prepare(
-      "INSERT INTO resources (name, active, sort_order, working_hours) VALUES (?, 1, ?, ?)"
+      "INSERT INTO resources (business_id, name, active, sort_order, working_hours) VALUES (?, ?, 1, ?, ?)"
     )
-    .run(name, maxOrder + 1, workingHours);
+    .run(req.user.businessId, name, maxOrder + 1, workingHours);
   const id = Number(result.lastInsertRowid);
 
   if (Array.isArray(req.body?.serviceIds)) {
-    setResourceServiceIds(id, req.body.serviceIds);
+    setResourceServiceIds(id, req.body.serviceIds, req.user.businessId);
   }
 
-  const row = db.prepare("SELECT * FROM resources WHERE id = ?").get(id);
+  const row = getOwnedResource(id, req.user.businessId);
   res.status(201).json(resourceToAdminJson(row));
 });
 
 app.put("/api/resources/:id", requireAuth, (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare("SELECT * FROM resources WHERE id = ?").get(id);
+  const existing = getOwnedResource(id, req.user.businessId);
   if (!existing) return res.status(404).json({ message: "Kaynak bulunamadı." });
 
   const name = req.body?.name?.trim() || existing.name;
@@ -695,16 +720,16 @@ app.put("/api/resources/:id", requireAuth, (req, res) => {
   ).run(name, active, workingHours, id);
 
   if (Array.isArray(req.body?.serviceIds)) {
-    setResourceServiceIds(id, req.body.serviceIds);
+    setResourceServiceIds(id, req.body.serviceIds, req.user.businessId);
   }
 
-  const row = db.prepare("SELECT * FROM resources WHERE id = ?").get(id);
+  const row = getOwnedResource(id, req.user.businessId);
   res.json(resourceToAdminJson(row));
 });
 
 app.delete("/api/resources/:id", requireAuth, (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare("SELECT * FROM resources WHERE id = ?").get(id);
+  const existing = getOwnedResource(id, req.user.businessId);
   if (!existing) return res.status(404).json({ message: "Kaynak bulunamadı." });
 
   const futureCount = db
@@ -729,6 +754,9 @@ app.delete("/api/resources/:id", requireAuth, (req, res) => {
 
 app.get("/api/resources/:id/time-off", requireAuth, (req, res) => {
   const resourceId = Number(req.params.id);
+  const resource = getOwnedResource(resourceId, req.user.businessId);
+  if (!resource) return res.status(404).json({ message: "Kaynak bulunamadı." });
+
   const rows = db
     .prepare(
       "SELECT * FROM resource_time_off WHERE resource_id = ? ORDER BY start_date"
@@ -747,7 +775,7 @@ app.get("/api/resources/:id/time-off", requireAuth, (req, res) => {
 
 app.post("/api/resources/:id/time-off", requireAuth, (req, res) => {
   const resourceId = Number(req.params.id);
-  const resource = db.prepare("SELECT id FROM resources WHERE id = ?").get(resourceId);
+  const resource = getOwnedResource(resourceId, req.user.businessId);
   if (!resource) return res.status(404).json({ message: "Kaynak bulunamadı." });
 
   const { startDate, endDate, reason } = req.body || {};
@@ -776,6 +804,9 @@ app.post("/api/resources/:id/time-off", requireAuth, (req, res) => {
 app.delete("/api/resources/:id/time-off/:timeOffId", requireAuth, (req, res) => {
   const resourceId = Number(req.params.id);
   const timeOffId = Number(req.params.timeOffId);
+  const resource = getOwnedResource(resourceId, req.user.businessId);
+  if (!resource) return res.status(404).json({ message: "Kaynak bulunamadı." });
+
   const existing = db
     .prepare("SELECT * FROM resource_time_off WHERE id = ? AND resource_id = ?")
     .get(timeOffId, resourceId);
@@ -788,7 +819,9 @@ app.delete("/api/resources/:id/time-off/:timeOffId", requireAuth, (req, res) => 
 // ---------- Hizmetler ----------
 
 app.get("/api/services", requireAuth, (req, res) => {
-  const rows = db.prepare("SELECT * FROM services ORDER BY id").all();
+  const rows = db
+    .prepare("SELECT * FROM services WHERE business_id = ? ORDER BY id")
+    .all(req.user.businessId);
   res.json(
     rows.map((s) => ({
       id: s.id,
@@ -810,9 +843,9 @@ app.post("/api/services", requireAuth, (req, res) => {
 
   const result = db
     .prepare(
-      "INSERT INTO services (name, duration_minutes, price, active) VALUES (?, ?, ?, 1)"
+      "INSERT INTO services (business_id, name, duration_minutes, price, active) VALUES (?, ?, ?, ?, 1)"
     )
-    .run(name.trim(), duration, priceNum);
+    .run(req.user.businessId, name.trim(), duration, priceNum);
 
   res.status(201).json({
     id: Number(result.lastInsertRowid),
@@ -825,7 +858,9 @@ app.post("/api/services", requireAuth, (req, res) => {
 
 app.put("/api/services/:id", requireAuth, (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare("SELECT * FROM services WHERE id = ?").get(id);
+  const existing = db
+    .prepare("SELECT * FROM services WHERE id = ? AND business_id = ?")
+    .get(id, req.user.businessId);
   if (!existing) return res.status(404).json({ message: "Hizmet bulunamadı." });
 
   const name = req.body?.name?.trim() || existing.name;
@@ -849,7 +884,9 @@ app.put("/api/services/:id", requireAuth, (req, res) => {
 
 app.delete("/api/services/:id", requireAuth, (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare("SELECT * FROM services WHERE id = ?").get(id);
+  const existing = db
+    .prepare("SELECT * FROM services WHERE id = ? AND business_id = ?")
+    .get(id, req.user.businessId);
   if (!existing) return res.status(404).json({ message: "Hizmet bulunamadı." });
 
   const inUse = db
@@ -878,7 +915,7 @@ app.get("/api/appointments", requireAuth, (req, res) => {
 });
 
 app.post("/api/appointments", requireAuth, (req, res) => {
-  const errors = validateAppointmentPayload(req.body);
+  const errors = validateAppointmentPayload(req.body, req.user.businessId);
   if (errors.length) {
     return res.status(400).json({ message: "Doğrulama hatası", errors });
   }
@@ -934,7 +971,7 @@ app.put("/api/appointments/:id", requireAuth, (req, res) => {
     .get(id, req.user.businessId);
   if (!existing) return res.status(404).json({ message: "Randevu bulunamadı." });
 
-  const errors = validateAppointmentPayload(req.body);
+  const errors = validateAppointmentPayload(req.body, req.user.businessId);
   if (errors.length) {
     return res.status(400).json({ message: "Doğrulama hatası", errors });
   }
@@ -1072,24 +1109,51 @@ app.get("/api/stats", requireAuth, (req, res) => {
 
 // ---------- Herkese açık (müşteri self-servis randevu) ----------
 
-app.get("/api/public/business", (req, res) => {
-  const settings = getSettings();
+// Herkese açık işletme sayfası yükünü (ayarlar + aktif kaynaklar + aktif
+// hizmetler) belirli bir işletme için hazırlar. Hem varsayılan (/api/public/business)
+// hem slug'a özel (/api/public/business/:slug) uç bunu paylaşır.
+function buildPublicBusinessPayload(businessId) {
+  const settings = getSettings(businessId);
+  if (!settings) return null;
+
   const resourceRows = db
-    .prepare("SELECT * FROM resources WHERE active = 1 ORDER BY sort_order, id")
-    .all();
+    .prepare("SELECT * FROM resources WHERE active = 1 AND business_id = ? ORDER BY sort_order, id")
+    .all(businessId);
   const resources = resourceRows.map((r) => ({
     id: r.id,
     name: r.name,
-    serviceIds: getResourceServiceIds(r.id),
+    serviceIds: getResourceServiceIds(r.id, businessId),
     workingHours: getEffectiveWorkingHours(r, settings.workingHours),
   }));
   const services = db
     .prepare(
-      "SELECT id, name, duration_minutes AS durationMinutes, price FROM services WHERE active = 1 ORDER BY id"
+      "SELECT id, name, duration_minutes AS durationMinutes, price FROM services WHERE active = 1 AND business_id = ? ORDER BY id"
     )
-    .all();
+    .all(businessId);
 
-  res.json({ ...settings, resources, services });
+  return { ...settings, resources, services };
+}
+
+// Geriye dönük uyumluluk: mevcut /randevu-al ve /book sayfaları hâlâ bu uca
+// slug vermeden istek atıyor, bu yüzden ilk (bootstrap) işletmeyi döndürmeye
+// devam eder.
+app.get("/api/public/business", (req, res) => {
+  const payload = buildPublicBusinessPayload(getDefaultBusinessId());
+  if (!payload) return res.status(404).json({ message: "İşletme bulunamadı." });
+  res.json(payload);
+});
+
+// Faz 3'te açılacak kendi kendine kayıt akışıyla oluşacak her işletme,
+// kendi randevu sayfasına bu uç üzerinden ulaşır.
+app.get("/api/public/business/:slug", (req, res) => {
+  const business = db
+    .prepare("SELECT id FROM businesses WHERE slug = ?")
+    .get(req.params.slug);
+  if (!business) return res.status(404).json({ message: "İşletme bulunamadı." });
+
+  const payload = buildPublicBusinessPayload(business.id);
+  if (!payload) return res.status(404).json({ message: "İşletme bulunamadı." });
+  res.json(payload);
 });
 
 app.get("/api/public/slots", (req, res) => {
@@ -1155,8 +1219,16 @@ app.post("/api/public/appointments", bookingLimiter, (req, res) => {
     return res.status(400).json({ message: "Doğrulama hatası", errors });
   }
 
+  // Misafir randevusunda işletme kimliği önceden bilinmiyor (giriş yok) —
+  // doğrulamadan geçen kaynağın kendi business_id'si kullanılır. Bu sayede
+  // Faz 2'nin işletmeye özel randevu sayfaları herhangi bir ek parametre
+  // olmadan doğru işletmeye yazar.
+  const resourceForBusiness = db
+    .prepare("SELECT business_id FROM resources WHERE id = ?")
+    .get(Number(req.body.resourceId));
+
   const payload = {
-    business_id: getDefaultBusinessId(),
+    business_id: resourceForBusiness?.business_id,
     customer_name: req.body.name.trim(),
     phone: normalizePhone(req.body.phone),
     email: req.body.email ? normalizeEmail(req.body.email) : "",
@@ -1167,7 +1239,7 @@ app.post("/api/public/appointments", bookingLimiter, (req, res) => {
     time: req.body.time,
   };
 
-  const activeAppointment = findActiveAppointmentForPhone(payload.phone);
+  const activeAppointment = findActiveAppointmentForPhone(payload.phone, payload.business_id);
   if (activeAppointment) {
     const businessPhone = getSettings(payload.business_id)?.phone;
     return res.status(409).json({
