@@ -12,7 +12,7 @@ if (!process.env.JWT_SECRET) {
 
 function signToken(user) {
   return jwt.sign(
-    { sub: user.id, username: user.username, role: "admin" },
+    { sub: user.id, username: user.username, businessId: user.business_id, role: "admin" },
     JWT_SECRET,
     { expiresIn: TOKEN_TTL }
   );
@@ -20,7 +20,7 @@ function signToken(user) {
 
 function signCustomerToken(customer) {
   return jwt.sign(
-    { sub: customer.id, phone: customer.phone, role: "customer" },
+    { sub: customer.id, phone: customer.phone, businessId: customer.business_id, role: "customer" },
     JWT_SECRET,
     { expiresIn: CUSTOMER_TOKEN_TTL }
   );
@@ -39,6 +39,11 @@ function requireRole(role) {
       const payload = jwt.verify(token, JWT_SECRET);
       if (payload.role !== role) {
         return res.status(403).json({ message: "Bu işlem için yetkiniz yok." });
+      }
+      // Çok işletmeli göçten önce verilmiş eski token'larda businessId yok —
+      // bu token'ları geçersiz say (kullanıcı bir kez daha giriş yapmalı).
+      if (!payload.businessId) {
+        return res.status(401).json({ message: "Oturum süresi dolmuş veya geçersiz." });
       }
       req.user = payload;
       next();
