@@ -6,6 +6,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const bcrypt = require("bcryptjs");
 
 function createTestApp(envOverrides = {}) {
   const dbFile = path.join(
@@ -62,4 +63,50 @@ async function adminLogin(baseUrl, username = "admin", password = "admin123") {
   return body.token;
 }
 
-module.exports = { createTestApp, startServer, adminLogin };
+// Test veritabanına ikinci, tamamen ayrı bir işletme (kendi admin'i, kaynağı
+// ve hizmetiyle) ekler — izolasyon testlerinde ortak fixture olarak kullanılır.
+function createSecondBusiness(db, overrides = {}) {
+  const slug = overrides.slug || "ikinci-isletme";
+  const name = overrides.name || "İkinci İşletme";
+  const adminUsername = overrides.adminUsername || "admin2";
+  const adminPassword = overrides.adminPassword || "ikinci123";
+
+  const bizResult = db
+    .prepare(
+      "INSERT INTO businesses (slug, name, owner_email, subscription_status) VALUES (?, ?, '', 'active')"
+    )
+    .run(slug, name);
+  const businessId = Number(bizResult.lastInsertRowid);
+
+  db.prepare(
+    `INSERT INTO settings (business_id, business_name, resource_label, resource_label_plural, phone, address, slot_minutes, working_hours)
+     VALUES (?, ?, 'Koltuk', 'Koltuklar', '', '', 60, '{}')`
+  ).run(businessId, name);
+
+  const hash = bcrypt.hashSync(adminPassword, 10);
+  db.prepare(
+    "INSERT INTO admin_users (business_id, username, password_hash) VALUES (?, ?, ?)"
+  ).run(businessId, adminUsername, hash);
+
+  const resourceResult = db
+    .prepare(
+      "INSERT INTO resources (business_id, name, active, sort_order) VALUES (?, 'İkinci Koltuk', 1, 0)"
+    )
+    .run(businessId);
+  const serviceResult = db
+    .prepare(
+      "INSERT INTO services (business_id, name, duration_minutes, price, active) VALUES (?, 'İkinci Hizmet', 30, 100, 1)"
+    )
+    .run(businessId);
+
+  return {
+    businessId,
+    slug,
+    adminUsername,
+    adminPassword,
+    resourceId: Number(resourceResult.lastInsertRowid),
+    serviceId: Number(serviceResult.lastInsertRowid),
+  };
+}
+
+module.exports = { createTestApp, startServer, adminLogin, createSecondBusiness };

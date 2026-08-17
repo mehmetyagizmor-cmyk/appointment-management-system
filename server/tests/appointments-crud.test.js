@@ -1,7 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const bcrypt = require("bcryptjs");
-const { createTestApp, startServer, adminLogin } = require("./helpers/app");
+const { createTestApp, startServer, adminLogin, createSecondBusiness } = require("./helpers/app");
 
 function futureDate(daysAhead) {
   const d = new Date();
@@ -112,40 +111,6 @@ test("aynı kaynak+tarih+saat için admin panelinden ikinci ekleme 409 döner", 
 // ---------- Çok işletmeli izolasyon ----------
 // Faz 1'in en kritik testi: bir işletmenin admin'i, başka bir işletmenin
 // randevularını hiçbir şekilde göremez/değiştiremez/silemez.
-
-function createSecondBusiness(db) {
-  const bizResult = db
-    .prepare(
-      "INSERT INTO businesses (slug, name, owner_email, subscription_status) VALUES (?, ?, '', 'active')"
-    )
-    .run("ikinci-isletme", "İkinci İşletme");
-  const businessId = Number(bizResult.lastInsertRowid);
-
-  db.prepare(
-    `INSERT INTO settings (business_id, business_name, resource_label, resource_label_plural, phone, address, slot_minutes, working_hours)
-     VALUES (?, 'İkinci İşletme', 'Koltuk', 'Koltuklar', '', '', 60, '{}')`
-  ).run(businessId);
-
-  const hash = bcrypt.hashSync("ikinci123", 10);
-  db.prepare(
-    "INSERT INTO admin_users (business_id, username, password_hash) VALUES (?, 'admin2', ?)"
-  ).run(businessId, hash);
-
-  const resourceResult = db
-    .prepare("INSERT INTO resources (business_id, name, active, sort_order) VALUES (?, 'İkinci Koltuk', 1, 0)")
-    .run(businessId);
-  const serviceResult = db
-    .prepare(
-      "INSERT INTO services (business_id, name, duration_minutes, price, active) VALUES (?, 'İkinci Hizmet', 30, 100, 1)"
-    )
-    .run(businessId);
-
-  return {
-    businessId,
-    resourceId: Number(resourceResult.lastInsertRowid),
-    serviceId: Number(serviceResult.lastInsertRowid),
-  };
-}
 
 test("bir işletmenin admin'i başka işletmenin randevu listesinde hiçbir şey görmez", async (t) => {
   const ta = createTestApp();
