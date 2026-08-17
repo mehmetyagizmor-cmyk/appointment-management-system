@@ -13,6 +13,7 @@ const TEXT = {
     loading: "Yükleniyor…",
     loadError:
       "İşletme bilgileri yüklenemedi. Lütfen sayfayı yenileyin veya daha sonra tekrar deneyin.",
+    notFound: "Bu adreste bir işletme bulunamadı. Bağlantıyı kontrol edin.",
     resourceLabelFallback: "Kaynak",
     validation: {
       name: "İsminizi giriniz.",
@@ -107,6 +108,7 @@ const TEXT = {
     loading: "Loading…",
     loadError:
       "Could not load business info. Please refresh the page or try again later.",
+    notFound: "No business found at this address. Please check the link.",
     resourceLabelFallback: "Resource",
     validation: {
       name: "Please enter your name.",
@@ -199,7 +201,10 @@ const TEXT = {
   },
 };
 
-function Booking({ lang = "tr" }) {
+// slug verilirse (bir işletmenin kendi /:slug sayfası), business bilgisi o
+// işletmeye özel uçtan çekilir; verilmezse (/randevu-al, /book) her zamanki
+// gibi ilk/bootstrap işletme kullanılır.
+function Booking({ lang = "tr", slug } = {}) {
   const t = TEXT[lang] || TEXT.tr;
   const { customer, isAuthenticated: isCustomer, checking: checkingCustomer, logout } =
     useCustomerAuth();
@@ -227,7 +232,10 @@ function Booking({ lang = "tr" }) {
     async function load() {
       setLoading(true);
       try {
-        const data = await api.get("/api/public/business", { auth: false });
+        const data = await api.get(
+          slug ? `/api/public/business/${slug}` : "/api/public/business",
+          { auth: false }
+        );
         setBusiness(data);
 
         // "Tekrar randevu al" ile gelindiyse önceki hizmet/personeli ön doldur
@@ -248,16 +256,18 @@ function Booking({ lang = "tr" }) {
             : null;
         const chosenResource = rebookResource ?? eligibleResources?.[0]?.id ?? null;
         if (chosenResource) setResourceId(chosenResource);
-      } catch {
-        setLoadError(t.loadError);
+      } catch (err) {
+        // Slug'lı bir sayfada 404, gerçekten var olmayan bir işletme adresi
+        // anlamına gelir — "sayfayı yenile" demek yanıltıcı olur.
+        setLoadError(slug && err?.status === 404 ? t.notFound : t.loadError);
       } finally {
         setLoading(false);
       }
     }
     load();
-    // Sadece ilk yüklemede çalışsın; rebook bilgisi navigasyon anında sabitlenir.
+    // rebook bilgisi navigasyon anında sabitlenir, tekrar tetiklenmemeli.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [slug]);
 
   useEffect(() => {
     // Kaynak değişince önceden seçilmiş tarih/saat artık geçersiz olabilir.
