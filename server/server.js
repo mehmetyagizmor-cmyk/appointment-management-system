@@ -71,8 +71,18 @@ function normalizeEmail(raw) {
 
 // ---------- Yardımcı fonksiyonlar ----------
 
-function getSettings() {
-  const row = db.prepare("SELECT * FROM settings WHERE id = 1").get();
+// Henüz kendi kendine kayıt akışı (Faz 3) olmadığından, işletme kimliği
+// URL/slug üzerinden gelmeyen uçlar (herkese açık randevu sayfası, misafir
+// randevusu vb.) ilk (bootstrap) işletmeyi kullanır. Faz 2, bunu gerçek
+// slug tabanlı bir aramayla değiştirecek.
+function getDefaultBusinessId() {
+  return db.prepare("SELECT id FROM businesses ORDER BY id LIMIT 1").get()?.id;
+}
+
+function getSettings(businessId) {
+  const bizId = businessId || getDefaultBusinessId();
+  if (!bizId) return null;
+  const row = db.prepare("SELECT * FROM settings WHERE business_id = ?").get(bizId);
   if (!row) return null;
   let workingHours;
   try {
@@ -81,6 +91,7 @@ function getSettings() {
     workingHours = DEFAULT_WORKING_HOURS;
   }
   return {
+    businessId: row.business_id,
     businessName: row.business_name,
     resourceLabel: row.resource_label,
     resourceLabelPlural: row.resource_label_plural,
@@ -282,7 +293,7 @@ function sendConfirmationEmailForAppointment(appointmentId) {
 
   sendBookingConfirmationEmail(
     { ...rowToAppointment(row), serviceName: row.service_name, resourceName: row.resource_name },
-    getSettings()
+    getSettings(row.business_id)
   );
 }
 
@@ -305,7 +316,6 @@ function checkAndSendReminders() {
 
   if (!candidates.length) return;
 
-  const business = getSettings();
   const windowMs = REMINDER_HOURS_BEFORE * 60 * 60 * 1000;
 
   for (const row of candidates) {
@@ -315,7 +325,7 @@ function checkAndSendReminders() {
 
     sendReminderEmail(
       { ...rowToAppointment(row), serviceName: row.service_name, resourceName: row.resource_name },
-      business
+      getSettings(row.business_id)
     ).then((sent) => {
       if (sent) {
         db.prepare("UPDATE appointments SET reminder_sent = 1 WHERE id = ?").run(row.id);
@@ -404,9 +414,13 @@ app.post("/api/customer/register", accountLimiter, (req, res) => {
 
   const normalizedPhone = normalizePhone(phone);
   const normalizedEmail = email ? normalizeEmail(email) : "";
+  // Şimdilik tüm misafir/müşteri hesapları ilk (bootstrap) işletmeye bağlanır
+  // — Faz 2, işletmeye özel URL'ler (/:slug) geldiğinde gerçek işletmeyi
+  // istekten çözecek. Bu yüzden telefon eşsizliği de o işletmeyle sınırlı.
+  const businessId = getDefaultBusinessId();
   const existing = db
-    .prepare("SELECT id FROM customers WHERE phone = ?")
-    .get(normalizedPhone);
+    .prepare("SELECT id FROM customers WHERE phone = ? AND business_id = ?")
+    .get(normalizedPhone, businessId);
   if (existing) {
     return res.status(409).json({
       message: "Bu telefon numarasıyla zaten bir hesap var. Lütfen giriş yapın.",
@@ -415,11 +429,14 @@ app.post("/api/customer/register", accountLimiter, (req, res) => {
 
   const hash = bcrypt.hashSync(password, 10);
   const result = db
-    .prepare("INSERT INTO customers (name, phone, email, password_hash) VALUES (?, ?, ?, ?)")
-    .run(name.trim(), normalizedPhone, normalizedEmail, hash);
+    .prepare(
+      "INSERT INTO customers (business_id, name, phone, email, password_hash) VALUES (?, ?, ?, ?, ?)"
+    )
+    .run(businessId, name.trim(), normalizedPhone, normalizedEmail, hash);
 
   const customer = {
     id: Number(result.lastInsertRowid),
+    business_id: businessId,
     name: name.trim(),
     phone: normalizedPhone,
     email: normalizedEmail,
@@ -434,9 +451,10 @@ app.post("/api/customer/login", accountLimiter, (req, res) => {
     return res.status(400).json({ message: "Telefon numarası ve şifre gerekli." });
   }
 
+  const businessId = getDefaultBusinessId();
   const customer = db
-    .prepare("SELECT * FROM customers WHERE phone = ?")
-    .get(normalizePhone(phone));
+    .prepare("SELECT * FROM customers WHERE phone = ? AND business_id = ?")
+    .get(normalizePhone(phone), businessId);
 
   if (!customer || !bcrypt.compareSync(password, customer.password_hash)) {
     return res.status(401).json({ message: "Telefon numarası veya şifre hatalı." });
@@ -466,6 +484,7 @@ app.post("/api/customer/appointments", bookingLimiter, requireCustomerAuth, (req
   }
 
   const payload = {
+    business_id: req.user.businessId,
     customer_id: customer.id,
     customer_name: customer.name,
     phone: customer.phone,
@@ -499,10 +518,11 @@ app.post("/api/customer/appointments", bookingLimiter, requireCustomerAuth, (req
 
   const result = db
     .prepare(
-      `INSERT INTO appointments (customer_name, phone, email, note, service_id, resource_id, date, time, status, customer_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)`
+      `INSERT INTO appointments (business_id, customer_name, phone, email, note, service_id, resource_id, date, time, status, customer_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)`
     )
     .run(
+      payload.business_id,
       payload.customer_name,
       payload.phone,
       payload.email,
@@ -527,7 +547,11 @@ app.delete("/api/customer/appointments/:id", requireCustomerAuth, (req, res) => 
   const id = Number(req.params.id);
   const existing = db.prepare("SELECT * FROM appointments WHERE id = ?").get(id);
 
-  if (!existing || existing.customer_id !== req.user.sub) {
+  if (
+    !existing ||
+    existing.customer_id !== req.user.sub ||
+    existing.business_id !== req.user.businessId
+  ) {
     return res.status(404).json({ message: "Randevu bulunamadı." });
   }
 
@@ -542,9 +566,9 @@ app.get("/api/customer/appointments", requireCustomerAuth, (req, res) => {
        FROM appointments a
        LEFT JOIN services s ON s.id = a.service_id
        LEFT JOIN resources r ON r.id = a.resource_id
-       WHERE a.customer_id = ?`
+       WHERE a.customer_id = ? AND a.business_id = ?`
     )
-    .all(req.user.sub)
+    .all(req.user.sub, req.user.businessId)
     .map((row) => ({
       ...rowToAppointment(row),
       serviceName: row.service_name,
@@ -557,11 +581,11 @@ app.get("/api/customer/appointments", requireCustomerAuth, (req, res) => {
 // ---------- Ayarlar (admin) ----------
 
 app.get("/api/settings", requireAuth, (req, res) => {
-  res.json(getSettings());
+  res.json(getSettings(req.user.businessId));
 });
 
 app.put("/api/settings", requireAuth, (req, res) => {
-  const current = getSettings();
+  const current = getSettings(req.user.businessId);
   if (!current) return res.status(404).json({ message: "Ayar bulunamadı." });
 
   const {
@@ -586,7 +610,7 @@ app.put("/api/settings", requireAuth, (req, res) => {
 
   db.prepare(
     `UPDATE settings SET business_name = ?, resource_label = ?, resource_label_plural = ?,
-     phone = ?, address = ?, slot_minutes = ?, working_hours = ? WHERE id = 1`
+     phone = ?, address = ?, slot_minutes = ?, working_hours = ? WHERE business_id = ?`
   ).run(
     next.businessName,
     next.resourceLabel,
@@ -594,10 +618,11 @@ app.put("/api/settings", requireAuth, (req, res) => {
     next.phone,
     next.address,
     next.slotMinutes,
-    JSON.stringify(next.workingHours)
+    JSON.stringify(next.workingHours),
+    req.user.businessId
   );
 
-  res.json(getSettings());
+  res.json(getSettings(req.user.businessId));
 });
 
 // ---------- Kaynaklar (koltuk / personel / oda...) ----------
@@ -846,7 +871,9 @@ app.delete("/api/services/:id", requireAuth, (req, res) => {
 // ---------- Randevular (admin) ----------
 
 app.get("/api/appointments", requireAuth, (req, res) => {
-  const rows = db.prepare("SELECT * FROM appointments").all();
+  const rows = db
+    .prepare("SELECT * FROM appointments WHERE business_id = ?")
+    .all(req.user.businessId);
   res.json(sortedAppointments(rows.map(rowToAppointment)));
 });
 
@@ -857,6 +884,7 @@ app.post("/api/appointments", requireAuth, (req, res) => {
   }
 
   const payload = {
+    business_id: req.user.businessId,
     customer_name: req.body.name.trim(),
     phone: (req.body.phone || "").trim(),
     note: (req.body.note || "").trim(),
@@ -879,10 +907,11 @@ app.post("/api/appointments", requireAuth, (req, res) => {
 
   const result = db
     .prepare(
-      `INSERT INTO appointments (customer_name, phone, note, service_id, resource_id, date, time, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed')`
+      `INSERT INTO appointments (business_id, customer_name, phone, note, service_id, resource_id, date, time, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')`
     )
     .run(
+      payload.business_id,
       payload.customer_name,
       payload.phone,
       payload.note,
@@ -893,14 +922,16 @@ app.post("/api/appointments", requireAuth, (req, res) => {
     );
 
   const row = db
-    .prepare("SELECT * FROM appointments WHERE id = ?")
-    .get(Number(result.lastInsertRowid));
+    .prepare("SELECT * FROM appointments WHERE id = ? AND business_id = ?")
+    .get(Number(result.lastInsertRowid), req.user.businessId);
   res.status(201).json(rowToAppointment(row));
 });
 
 app.put("/api/appointments/:id", requireAuth, (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare("SELECT * FROM appointments WHERE id = ?").get(id);
+  const existing = db
+    .prepare("SELECT * FROM appointments WHERE id = ? AND business_id = ?")
+    .get(id, req.user.businessId);
   if (!existing) return res.status(404).json({ message: "Randevu bulunamadı." });
 
   const errors = validateAppointmentPayload(req.body);
@@ -931,7 +962,7 @@ app.put("/api/appointments/:id", requireAuth, (req, res) => {
 
   db.prepare(
     `UPDATE appointments SET customer_name = ?, phone = ?, note = ?, service_id = ?,
-     resource_id = ?, date = ?, time = ?, status = ? WHERE id = ?`
+     resource_id = ?, date = ?, time = ?, status = ? WHERE id = ? AND business_id = ?`
   ).run(
     payload.customer_name,
     payload.phone,
@@ -941,21 +972,31 @@ app.put("/api/appointments/:id", requireAuth, (req, res) => {
     payload.date,
     payload.time,
     payload.status,
-    id
+    id,
+    req.user.businessId
   );
 
-  const row = db.prepare("SELECT * FROM appointments WHERE id = ?").get(id);
+  const row = db
+    .prepare("SELECT * FROM appointments WHERE id = ? AND business_id = ?")
+    .get(id, req.user.businessId);
   res.json({ message: "Randevu güncellendi.", appointment: rowToAppointment(row) });
 });
 
 app.delete("/api/appointments/:id", requireAuth, (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare("SELECT * FROM appointments WHERE id = ?").get(id);
+  const existing = db
+    .prepare("SELECT * FROM appointments WHERE id = ? AND business_id = ?")
+    .get(id, req.user.businessId);
   if (!existing) return res.status(404).json({ message: "Randevu bulunamadı." });
 
-  db.prepare("DELETE FROM appointments WHERE id = ?").run(id);
+  db.prepare("DELETE FROM appointments WHERE id = ? AND business_id = ?").run(
+    id,
+    req.user.businessId
+  );
 
-  const rows = db.prepare("SELECT * FROM appointments").all();
+  const rows = db
+    .prepare("SELECT * FROM appointments WHERE business_id = ?")
+    .all(req.user.businessId);
   res.status(200).json({
     message: "Randevu silindi.",
     appointments: sortedAppointments(rows.map(rowToAppointment)),
@@ -965,42 +1006,43 @@ app.delete("/api/appointments/:id", requireAuth, (req, res) => {
 // ---------- İstatistikler (admin dashboard) ----------
 
 app.get("/api/stats", requireAuth, (req, res) => {
+  const businessId = req.user.businessId;
   const todayISO = new Date().toISOString().slice(0, 10);
   const weekAheadISO = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
 
   const todayCount = db
     .prepare(
-      "SELECT COUNT(*) AS c FROM appointments WHERE date = ? AND status != 'cancelled'"
+      "SELECT COUNT(*) AS c FROM appointments WHERE business_id = ? AND date = ? AND status != 'cancelled'"
     )
-    .get(todayISO).c;
+    .get(businessId, todayISO).c;
 
   const weekCount = db
     .prepare(
-      "SELECT COUNT(*) AS c FROM appointments WHERE date >= ? AND date <= ? AND status != 'cancelled'"
+      "SELECT COUNT(*) AS c FROM appointments WHERE business_id = ? AND date >= ? AND date <= ? AND status != 'cancelled'"
     )
-    .get(todayISO, weekAheadISO).c;
+    .get(businessId, todayISO, weekAheadISO).c;
 
   const totalCustomers = db
-    .prepare("SELECT COUNT(DISTINCT customer_name) AS c FROM appointments")
-    .get().c;
+    .prepare("SELECT COUNT(DISTINCT customer_name) AS c FROM appointments WHERE business_id = ?")
+    .get(businessId).c;
 
   const monthPrefix = todayISO.slice(0, 7);
   const monthRevenue = db
     .prepare(
       `SELECT COALESCE(SUM(s.price), 0) AS total
        FROM appointments a JOIN services s ON s.id = a.service_id
-       WHERE a.date LIKE ? AND a.status != 'cancelled'`
+       WHERE a.business_id = ? AND a.date LIKE ? AND a.status != 'cancelled'`
     )
-    .get(`${monthPrefix}%`).total;
+    .get(businessId, `${monthPrefix}%`).total;
 
   const byService = db
     .prepare(
       `SELECT s.name AS name, COUNT(*) AS count
        FROM appointments a JOIN services s ON s.id = a.service_id
-       WHERE a.status != 'cancelled'
+       WHERE a.business_id = ? AND a.status != 'cancelled'
        GROUP BY s.id ORDER BY count DESC LIMIT 5`
     )
-    .all();
+    .all(businessId);
 
   const upcoming = db
     .prepare(
@@ -1008,10 +1050,10 @@ app.get("/api/stats", requireAuth, (req, res) => {
        FROM appointments a
        LEFT JOIN services s ON s.id = a.service_id
        LEFT JOIN resources r ON r.id = a.resource_id
-       WHERE a.date >= ? AND a.status != 'cancelled'
+       WHERE a.business_id = ? AND a.date >= ? AND a.status != 'cancelled'
        ORDER BY a.date, a.time LIMIT 5`
     )
-    .all(todayISO)
+    .all(businessId, todayISO)
     .map((row) => ({
       ...rowToAppointment(row),
       serviceName: row.service_name,
@@ -1114,6 +1156,7 @@ app.post("/api/public/appointments", bookingLimiter, (req, res) => {
   }
 
   const payload = {
+    business_id: getDefaultBusinessId(),
     customer_name: req.body.name.trim(),
     phone: normalizePhone(req.body.phone),
     email: req.body.email ? normalizeEmail(req.body.email) : "",
@@ -1126,7 +1169,7 @@ app.post("/api/public/appointments", bookingLimiter, (req, res) => {
 
   const activeAppointment = findActiveAppointmentForPhone(payload.phone);
   if (activeAppointment) {
-    const businessPhone = getSettings()?.phone;
+    const businessPhone = getSettings(payload.business_id)?.phone;
     return res.status(409).json({
       message: businessPhone
         ? `Bu telefon numarasıyla zaten bekleyen bir randevu var. Mevcut randevunuzu iptal ettirip yenisini alabilmek için ${businessPhone} numarasını arayabilirsiniz.`
@@ -1147,10 +1190,11 @@ app.post("/api/public/appointments", bookingLimiter, (req, res) => {
 
   const result = db
     .prepare(
-      `INSERT INTO appointments (customer_name, phone, email, note, service_id, resource_id, date, time, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')`
+      `INSERT INTO appointments (business_id, customer_name, phone, email, note, service_id, resource_id, date, time, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')`
     )
     .run(
+      payload.business_id,
       payload.customer_name,
       payload.phone,
       payload.email,
@@ -1170,9 +1214,16 @@ app.post("/api/public/appointments", bookingLimiter, (req, res) => {
   });
 });
 
-checkAndSendReminders();
-setInterval(checkAndSendReminders, REMINDER_CHECK_INTERVAL_MS);
+// Testler bu dosyayı `require` ederek app'i doğrudan (ağ dinlemeden) kullanır;
+// arka plan hatırlatma işi ve gerçek port dinleme yalnızca `node server.js`
+// ile normal çalıştırmada devreye girer.
+if (require.main === module) {
+  checkAndSendReminders();
+  setInterval(checkAndSendReminders, REMINDER_CHECK_INTERVAL_MS);
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+  app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = { app };
