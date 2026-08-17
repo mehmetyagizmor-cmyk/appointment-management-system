@@ -6,6 +6,7 @@ const bcrypt = require("bcryptjs");
 const rateLimit = require("express-rate-limit");
 
 const { db, DEFAULT_WORKING_HOURS } = require("./db");
+const { slugify } = require("./slugify");
 const {
   signToken,
   signCustomerToken,
@@ -361,6 +362,99 @@ app.get("/", (req, res) => {
 });
 
 // ---------- Auth ----------
+
+// Belirtilen işletme adından benzersiz bir slug üretir; aynı slug başka bir
+// işletmede varsa -2, -3... eklenerek çakışma giderilir.
+function generateUniqueSlug(name) {
+  const base = slugify(name);
+  let candidate = base;
+  let suffix = 2;
+  while (db.prepare("SELECT id FROM businesses WHERE slug = ?").get(candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+// Kendi kendine kayıt: yeni bir işletme + onun ilk (ve şimdilik tek) admin
+// hesabını tek seferde oluşturur, ardından doğrudan giriş yapmış gibi token
+// döner (e-posta doğrulaması yok — Faz 3 kapsamında bilinçli bir basitleştirme,
+// ödeme/abonelik zaten olmadığı için erteleyecek bir "kapı" da yok).
+app.post("/api/business/register", accountLimiter, (req, res) => {
+  const { businessName, username, password, ownerEmail } = req.body || {};
+  const errors = [];
+
+  const nameTrimmed = String(businessName || "").trim();
+  if (!nameTrimmed || nameTrimmed.length < 2) {
+    errors.push("İşletme adı en az 2 karakter olmalı.");
+  }
+
+  const usernameNormalized = String(username || "").trim().toLowerCase();
+  if (!usernameNormalized || usernameNormalized.length < 3) {
+    errors.push("Kullanıcı adı en az 3 karakter olmalı.");
+  }
+
+  if (!password || String(password).length < 6) {
+    errors.push("Şifre en az 6 karakter olmalı.");
+  }
+
+  if (ownerEmail && !isValidEmail(ownerEmail)) {
+    errors.push("Geçerli bir e-posta adresi giriniz.");
+  }
+
+  if (errors.length) {
+    return res.status(400).json({ message: "Doğrulama hatası", errors });
+  }
+
+  // admin_users tablosundaki gerçek kısıt işletme bazlı (business_id, username),
+  // ama giriş ekranı hangi işletmeden geldiğini bilmiyor — bu yüzden kullanıcı
+  // adının pratikte tüm sistemde eşsiz olması burada ayrıca zorlanıyor.
+  const existingUsername = db
+    .prepare("SELECT id FROM admin_users WHERE username = ?")
+    .get(usernameNormalized);
+  if (existingUsername) {
+    return res.status(409).json({
+      message: "Bu kullanıcı adı zaten alınmış. Lütfen başka bir kullanıcı adı deneyin.",
+    });
+  }
+
+  const slug = generateUniqueSlug(nameTrimmed);
+  const passwordHash = bcrypt.hashSync(password, 10);
+
+  let businessId;
+  let adminId;
+  db.exec("BEGIN");
+  try {
+    const bizResult = db
+      .prepare(
+        "INSERT INTO businesses (slug, name, owner_email, subscription_status) VALUES (?, ?, ?, 'active')"
+      )
+      .run(slug, nameTrimmed, ownerEmail ? normalizeEmail(ownerEmail) : "");
+    businessId = Number(bizResult.lastInsertRowid);
+
+    db.prepare(
+      `INSERT INTO settings (business_id, business_name, resource_label, resource_label_plural, phone, address, slot_minutes, working_hours)
+       VALUES (?, ?, 'Koltuk', 'Koltuklar', '', '', 60, ?)`
+    ).run(businessId, nameTrimmed, JSON.stringify(DEFAULT_WORKING_HOURS));
+
+    const adminResult = db
+      .prepare("INSERT INTO admin_users (business_id, username, password_hash) VALUES (?, ?, ?)")
+      .run(businessId, usernameNormalized, passwordHash);
+    adminId = Number(adminResult.lastInsertRowid);
+
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+
+  const token = signToken({ id: adminId, username: usernameNormalized, business_id: businessId });
+  res.status(201).json({
+    token,
+    username: usernameNormalized,
+    business: { id: businessId, slug, name: nameTrimmed },
+  });
+});
 
 app.post("/api/auth/login", accountLimiter, (req, res) => {
   const { username, password } = req.body || {};
