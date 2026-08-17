@@ -77,6 +77,9 @@ function Login() {
         <p className="auth-hint">
           Demo hesap: <code>admin</code> / <code>admin123</code>
         </p>
+        <p className="auth-hint">
+          Henüz hesabınız yok mu? <Link to="/kayit">İşletmenizi oluşturun</Link>
+        </p>
         <Link to="/" className="auth-back">
           ← Ana sayfaya dön
         </Link>

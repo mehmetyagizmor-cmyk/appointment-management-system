@@ -39,6 +39,17 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
+  const register = useCallback(async ({ businessName, username: usernameInput, password, ownerEmail }) => {
+    const data = await api.post(
+      "/api/business/register",
+      { businessName, username: usernameInput, password, ownerEmail },
+      { auth: false }
+    );
+    setToken(data.token);
+    setUsername(data.username);
+    return data;
+  }, []);
+
   const logout = useCallback(() => {
     setToken(null);
     setUsername(null);
@@ -49,6 +60,7 @@ export function AuthProvider({ children }) {
     isAuthenticated: !!username,
     checking,
     login,
+    register,
     logout,
   };
 

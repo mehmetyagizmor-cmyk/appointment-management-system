@@ -1,6 +1,7 @@
 import { Route, Routes, useParams } from "react-router-dom";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import CustomerLogin from "./pages/CustomerLogin";
 import Booking from "./pages/Booking";
 import MyAppointments from "./pages/MyAppointments";
@@ -28,6 +29,7 @@ function App() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/giris" element={<Login />} />
+      <Route path="/kayit" element={<Register />} />
       <Route path="/musteri-giris" element={<CustomerLogin />} />
       <Route path="/randevu-al" element={<Booking />} />
       <Route
