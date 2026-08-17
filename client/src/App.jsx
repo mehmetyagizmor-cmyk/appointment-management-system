@@ -17,7 +17,8 @@ import NotFound from "./pages/NotFound";
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={<Landing lang="tr" />} />
+      <Route path="/en" element={<Landing lang="en" />} />
       <Route path="/giris" element={<Login />} />
       <Route path="/musteri-giris" element={<CustomerLogin />} />
       <Route path="/randevu-al" element={<Booking />} />

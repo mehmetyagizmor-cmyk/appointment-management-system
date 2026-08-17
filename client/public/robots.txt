@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /panel
+Disallow: /giris
+Disallow: /musteri-giris
+Disallow: /randevularim
+
+Sitemap: https://randevu-yonetim-sistemi.example.com/sitemap.xml
