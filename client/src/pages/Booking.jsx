@@ -8,7 +8,199 @@ import { buildWhatsAppLink } from "../utils/whatsapp";
 import { formatDateLabel } from "../utils/date";
 import PublicWeeklySchedule from "../components/PublicWeeklySchedule";
 
-function Booking() {
+const TEXT = {
+  tr: {
+    loading: "Yükleniyor…",
+    loadError:
+      "İşletme bilgileri yüklenemedi. Lütfen sayfayı yenileyin veya daha sonra tekrar deneyin.",
+    resourceLabelFallback: "Kaynak",
+    validation: {
+      name: "İsminizi giriniz.",
+      phone: "Geçerli bir cep telefonu numarası giriniz (05xx xxx xx xx).",
+      email: "Geçerli bir e-posta adresi giriniz.",
+      resource: (label) => `${label} seçiniz.`,
+      slot: "Tarih ve saat seçiniz.",
+    },
+    hasActive: {
+      title: "Zaten bir randevunuz var",
+      body: (date, time, serviceName, resourceName) => (
+        <>
+          <strong>{date}</strong> tarihinde saat <strong>{time}</strong> için
+          {serviceName ? <> {serviceName},</> : null} {resourceName || ""}{" "}
+          randevunuz bulunuyor.
+        </>
+      ),
+      note: "Yeni bir randevu alabilmek için önce bu randevuyu iptal etmeniz gerekiyor.",
+      cancelling: "İptal ediliyor…",
+      cancel: "Randevuyu iptal et",
+      backHome: "Ana sayfaya dön",
+    },
+    confirmed: {
+      title: "Randevunuz oluşturuldu!",
+      body: (date, time, serviceName, resourceName) => (
+        <>
+          <strong>{date}</strong> tarihinde saat <strong>{time}</strong> için{" "}
+          {serviceName ? <>{serviceName} hizmeti,</> : null} {resourceName} için
+          randevunuz alındı.
+        </>
+      ),
+      note: (businessName, phone) => (
+        <>
+          {businessName} sizi bekliyor. Bir sorunuz olursa {phone || "işletmeyi"}{" "}
+          üzerinden ulaşabilirsiniz.
+        </>
+      ),
+      backHome: "Ana sayfaya dön",
+      whatsapp: "WhatsApp'tan yazın",
+      whatsappMessage: (date, time) =>
+        `Merhaba, ${date} saat ${time} için aldığım randevu hakkında bir sorum var.`,
+    },
+    header: {
+      subtitle: "Aşağıdan hizmet, uzman ve saat seçerek randevunuzu hemen oluşturun.",
+      greeting: (name) => (
+        <>
+          Merhaba, <strong>{name}</strong>. Bilgilerinizi tekrar yazmanıza gerek
+          yok.
+        </>
+      ),
+      myAppointments: "Randevularım",
+      logout: "Çıkış yap",
+      haveAccount: "Hesabınız var mı?",
+      login: "Giriş yapın",
+      loginSuffix: ", bilgilerinizi tekrar yazmadan randevu alın.",
+    },
+    steps: {
+      service: "1. Hizmet seçin",
+      noServices: "Henüz tanımlı hizmet yok.",
+      resource: (label) => `2. ${label} seçin`,
+      noEligibleResources: "Bu hizmeti verebilecek uygun bir kaynak yok.",
+      noResources: "Henüz tanımlı kaynak yok.",
+      slot: "3. Tarih ve saat seçin",
+      slotNeedsResource: (label) =>
+        `Saat seçebilmek için önce ${label.toLowerCase()} seçin.`,
+    },
+    details: {
+      title: "4. Bilgileriniz",
+      name: "Ad Soyad",
+      namePlaceholder: "Adınız Soyadınız",
+      phone: "Telefon",
+      phonePlaceholder: "05xx xxx xx xx",
+      email: "E-posta",
+      emailOptional: "(opsiyonel — hatırlatma için)",
+      emailPlaceholder: "ornek@eposta.com",
+      note: "Not (opsiyonel)",
+      notePlaceholder: "Eklemek istediğiniz bir şey var mı?",
+    },
+    summary: {
+      title: "Randevu Özeti",
+      noService: "Hizmet seçilmedi",
+      noSlot: "Tarih ve saat seçilmedi",
+    },
+    submit: {
+      submitting: "Gönderiliyor…",
+      idle: "Randevuyu Onayla",
+    },
+    durationUnit: "dk",
+  },
+
+  en: {
+    loading: "Loading…",
+    loadError:
+      "Could not load business info. Please refresh the page or try again later.",
+    resourceLabelFallback: "Resource",
+    validation: {
+      name: "Please enter your name.",
+      phone: "Please enter a valid Turkish mobile number (05xx xxx xx xx).",
+      email: "Please enter a valid email address.",
+      resource: (label) => `Please choose a ${label.toLowerCase()}.`,
+      slot: "Please choose a date and time.",
+    },
+    hasActive: {
+      title: "You already have an appointment",
+      body: (date, time, serviceName, resourceName) => (
+        <>
+          You have an appointment on <strong>{date}</strong> at{" "}
+          <strong>{time}</strong>
+          {serviceName ? <> for {serviceName}</> : null}
+          {resourceName ? <>, {resourceName}</> : null}.
+        </>
+      ),
+      note: "To book a new appointment, please cancel this one first.",
+      cancelling: "Cancelling…",
+      cancel: "Cancel appointment",
+      backHome: "Back to home",
+    },
+    confirmed: {
+      title: "Your appointment is confirmed!",
+      body: (date, time, serviceName, resourceName) => (
+        <>
+          Your appointment
+          {serviceName ? <> for {serviceName}</> : null}
+          {resourceName ? <> with {resourceName}</> : null} on{" "}
+          <strong>{date}</strong> at <strong>{time}</strong> is confirmed.
+        </>
+      ),
+      note: (businessName, phone) => (
+        <>
+          {businessName} is expecting you. If you have any questions, you can
+          reach them {phone ? <>at {phone}</> : "directly"}.
+        </>
+      ),
+      backHome: "Back to home",
+      whatsapp: "Message on WhatsApp",
+      whatsappMessage: (date, time) =>
+        `Hi, I have a question about my appointment on ${date} at ${time}.`,
+    },
+    header: {
+      subtitle: "Choose a service, specialist and time below to book instantly.",
+      greeting: (name) => (
+        <>
+          Hi, <strong>{name}</strong>. No need to re-enter your details.
+        </>
+      ),
+      myAppointments: "My appointments",
+      logout: "Log out",
+      haveAccount: "Already have an account?",
+      login: "Log in",
+      loginSuffix: " to book without re-entering your details.",
+    },
+    steps: {
+      service: "1. Choose a service",
+      noServices: "No services defined yet.",
+      resource: (label) => `2. Choose ${label.toLowerCase()}`,
+      noEligibleResources: "No resource available offers this service.",
+      noResources: "No resources defined yet.",
+      slot: "3. Choose date & time",
+      slotNeedsResource: (label) =>
+        `Choose a ${label.toLowerCase()} first to see available times.`,
+    },
+    details: {
+      title: "4. Your details",
+      name: "Full name",
+      namePlaceholder: "Your full name",
+      phone: "Phone",
+      phonePlaceholder: "05xx xxx xx xx",
+      email: "Email",
+      emailOptional: "(optional — for reminders)",
+      emailPlaceholder: "you@example.com",
+      note: "Note (optional)",
+      notePlaceholder: "Anything you'd like to add?",
+    },
+    summary: {
+      title: "Booking summary",
+      noService: "No service selected",
+      noSlot: "No date/time selected",
+    },
+    submit: {
+      submitting: "Submitting…",
+      idle: "Confirm booking",
+    },
+    durationUnit: "min",
+  },
+};
+
+function Booking({ lang = "tr" }) {
+  const t = TEXT[lang] || TEXT.tr;
   const { customer, isAuthenticated: isCustomer, checking: checkingCustomer, logout } =
     useCustomerAuth();
   const location = useLocation();
@@ -57,9 +249,7 @@ function Booking() {
         const chosenResource = rebookResource ?? eligibleResources?.[0]?.id ?? null;
         if (chosenResource) setResourceId(chosenResource);
       } catch {
-        setLoadError(
-          "İşletme bilgileri yüklenemedi. Lütfen sayfayı yenileyin veya daha sonra tekrar deneyin."
-        );
+        setLoadError(t.loadError);
       } finally {
         setLoading(false);
       }
@@ -143,20 +333,21 @@ function Booking() {
 
   const selectedService = business?.services.find((s) => s.id === serviceId);
   const selectedResource = business?.resources.find((r) => r.id === resourceId);
+  const resourceLabel = business?.resourceLabel || t.resourceLabelFallback;
 
   function validate() {
     const errors = [];
     if (!isCustomer) {
-      if (!form.name.trim()) errors.push("İsminizi giriniz.");
+      if (!form.name.trim()) errors.push(t.validation.name);
       if (!isValidPhone(form.phone)) {
-        errors.push("Geçerli bir cep telefonu numarası giriniz (05xx xxx xx xx).");
+        errors.push(t.validation.phone);
       }
       if (form.email.trim() && !isValidEmail(form.email)) {
-        errors.push("Geçerli bir e-posta adresi giriniz.");
+        errors.push(t.validation.email);
       }
     }
-    if (!resourceId) errors.push(`${business?.resourceLabel || "Kaynak"} seçiniz.`);
-    if (!date || !time) errors.push("Tarih ve saat seçiniz.");
+    if (!resourceId) errors.push(t.validation.resource(resourceLabel));
+    if (!date || !time) errors.push(t.validation.slot);
     return errors;
   }
 
@@ -214,7 +405,7 @@ function Booking() {
     return (
       <div className="loading-state full-screen">
         <div className="spinner" />
-        <p>Yükleniyor…</p>
+        <p>{t.loading}</p>
       </div>
     );
   }
@@ -231,7 +422,7 @@ function Booking() {
     return (
       <div className="loading-state full-screen">
         <div className="spinner" />
-        <p>Yükleniyor…</p>
+        <p>{t.loading}</p>
       </div>
     );
   }
@@ -241,16 +432,16 @@ function Booking() {
       <div className="booking-page">
         <div className="booking-confirm panel">
           <div className="confirm-icon">📅</div>
-          <h1>Zaten bir randevunuz var</h1>
+          <h1>{t.hasActive.title}</h1>
           <p>
-            <strong>{formatDateLabel(activeAppointment.date)}</strong> tarihinde
-            saat <strong>{activeAppointment.time}</strong> için
-            {activeAppointment.serviceName ? <> {activeAppointment.serviceName},</> : null}{" "}
-            {activeAppointment.resourceName || ""} randevunuz bulunuyor.
+            {t.hasActive.body(
+              formatDateLabel(activeAppointment.date, lang),
+              activeAppointment.time,
+              activeAppointment.serviceName,
+              activeAppointment.resourceName
+            )}
           </p>
-          <p className="confirm-note">
-            Yeni bir randevu alabilmek için önce bu randevuyu iptal etmeniz gerekiyor.
-          </p>
+          <p className="confirm-note">{t.hasActive.note}</p>
 
           {formErrors.length > 0 && (
             <ul className="form-errors">
@@ -267,10 +458,10 @@ function Booking() {
               onClick={handleCancelActive}
               disabled={cancelling}
             >
-              {cancelling ? "İptal ediliyor…" : "Randevuyu iptal et"}
+              {cancelling ? t.hasActive.cancelling : t.hasActive.cancel}
             </button>
             <Link to="/" className="btn btn-ghost">
-              Ana sayfaya dön
+              {t.hasActive.backHome}
             </Link>
           </div>
         </div>
@@ -283,33 +474,36 @@ function Booking() {
       <div className="booking-page">
         <div className="booking-confirm panel">
           <div className="confirm-icon">✓</div>
-          <h1>Randevunuz oluşturuldu!</h1>
+          <h1>{t.confirmed.title}</h1>
           <p>
-            <strong>{formatDateLabel(confirmed.date)}</strong> tarihinde saat{" "}
-            <strong>{confirmed.time}</strong> için{" "}
-            {confirmed.service ? <>{confirmed.service.name} hizmeti,</> : null}{" "}
-            {confirmed.resource ? confirmed.resource.name : ""} için randevunuz
-            alındı.
+            {t.confirmed.body(
+              formatDateLabel(confirmed.date, lang),
+              confirmed.time,
+              confirmed.service?.name,
+              confirmed.resource?.name
+            )}
           </p>
           <p className="confirm-note">
-            {business.businessName} sizi bekliyor. Bir sorunuz olursa{" "}
-            {business.phone || "işletmeyi"} üzerinden ulaşabilirsiniz.
+            {t.confirmed.note(business.businessName, business.phone)}
           </p>
           <div className="hero-actions center">
             <Link to="/" className="btn btn-primary">
-              Ana sayfaya dön
+              {t.confirmed.backHome}
             </Link>
             {business.phone && (
               <a
                 className="btn btn-whatsapp"
                 href={buildWhatsAppLink(
                   business.phone,
-                  `Merhaba, ${formatDateLabel(confirmed.date)} saat ${confirmed.time} için aldığım randevu hakkında bir sorum var.`
+                  t.confirmed.whatsappMessage(
+                    formatDateLabel(confirmed.date, lang),
+                    confirmed.time
+                  )
                 )}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                WhatsApp'tan yazın
+                {t.confirmed.whatsapp}
               </a>
             )}
           </div>
@@ -325,28 +519,25 @@ function Booking() {
           <span className="admin-brand-mark">R</span>
           {business.businessName}
         </Link>
-        <p>Aşağıdan hizmet, uzman ve saat seçerek randevunuzu hemen oluşturun.</p>
+        <p>{t.header.subtitle}</p>
 
         {!checkingCustomer && (
           <div className="booking-account-strip">
             {isCustomer ? (
               <>
-                <span>
-                  Merhaba, <strong>{customer.name}</strong>. Bilgilerinizi tekrar
-                  yazmanıza gerek yok.
-                </span>
+                <span>{t.header.greeting(customer.name)}</span>
                 <Link to="/randevularim" className="link-btn">
-                  Randevularım
+                  {t.header.myAppointments}
                 </Link>
                 <button type="button" className="link-btn" onClick={logout}>
-                  Çıkış yap
+                  {t.header.logout}
                 </button>
               </>
             ) : (
               <span>
-                Hesabınız var mı?{" "}
-                <Link to="/musteri-giris">Giriş yapın</Link>, bilgilerinizi
-                tekrar yazmadan randevu alın.
+                {t.header.haveAccount}{" "}
+                <Link to="/musteri-giris">{t.header.login}</Link>
+                {t.header.loginSuffix}
               </span>
             )}
           </div>
@@ -355,10 +546,10 @@ function Booking() {
 
       <form className="booking-grid" onSubmit={handleSubmit}>
         <div className="panel booking-panel">
-          <h2>1. Hizmet seçin</h2>
+          <h2>{t.steps.service}</h2>
           <div className="pill-grid">
             {business.services.length === 0 && (
-              <p className="empty-state">Henüz tanımlı hizmet yok.</p>
+              <p className="empty-state">{t.steps.noServices}</p>
             )}
             {business.services.map((s) => (
               <button
@@ -369,21 +560,17 @@ function Booking() {
               >
                 <span>{s.name}</span>
                 <span className="pill-meta">
-                  {s.durationMinutes} dk · {s.price}₺
+                  {s.durationMinutes} {t.durationUnit} · {s.price}₺
                 </span>
               </button>
             ))}
           </div>
 
-          <h2>
-            2. {business.resourceLabel || "Kaynak"} seçin
-          </h2>
+          <h2>{t.steps.resource(resourceLabel)}</h2>
           <div className="pill-grid">
             {eligibleResources.length === 0 && (
               <p className="empty-state">
-                {serviceId
-                  ? "Bu hizmeti verebilecek uygun bir kaynak yok."
-                  : "Henüz tanımlı kaynak yok."}
+                {serviceId ? t.steps.noEligibleResources : t.steps.noResources}
               </p>
             )}
             {eligibleResources.map((r) => (
@@ -398,7 +585,7 @@ function Booking() {
             ))}
           </div>
 
-          <h2>3. Tarih ve saat seçin</h2>
+          <h2>{t.steps.slot}</h2>
           {resourceId ? (
             <PublicWeeklySchedule
               resourceId={resourceId}
@@ -409,17 +596,15 @@ function Booking() {
               slotMinutes={business.slotMinutes}
               value={{ date, time }}
               onSelect={handleSlotSelect}
+              lang={lang}
             />
           ) : (
-            <p className="empty-state">
-              Saat seçebilmek için önce {(business.resourceLabel || "kaynak").toLowerCase()}{" "}
-              seçin.
-            </p>
+            <p className="empty-state">{t.steps.slotNeedsResource(resourceLabel)}</p>
           )}
         </div>
 
         <div className="panel booking-panel">
-          <h2>4. Bilgileriniz</h2>
+          <h2>{t.details.title}</h2>
           {isCustomer ? (
             <div className="booking-customer-card">
               <p>
@@ -430,52 +615,53 @@ function Booking() {
           ) : (
             <>
               <label>
-                Ad Soyad
+                {t.details.name}
                 <input
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Adınız Soyadınız"
+                  placeholder={t.details.namePlaceholder}
                 />
               </label>
               <label>
-                Telefon
+                {t.details.phone}
                 <input
                   type="tel"
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="05xx xxx xx xx"
+                  placeholder={t.details.phonePlaceholder}
                 />
               </label>
               <label>
-                E-posta <span className="auth-optional">(opsiyonel — hatırlatma için)</span>
+                {t.details.email}{" "}
+                <span className="auth-optional">{t.details.emailOptional}</span>
                 <input
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="ornek@eposta.com"
+                  placeholder={t.details.emailPlaceholder}
                 />
               </label>
             </>
           )}
           <label>
-            Not (opsiyonel)
+            {t.details.note}
             <textarea
               rows={3}
               value={form.note}
               onChange={(e) => setForm({ ...form, note: e.target.value })}
-              placeholder="Eklemek istediğiniz bir şey var mı?"
+              placeholder={t.details.notePlaceholder}
             />
           </label>
 
           <div className="booking-summary">
-            <h3>Randevu Özeti</h3>
-            <p>{selectedService ? selectedService.name : "Hizmet seçilmedi"}</p>
+            <h3>{t.summary.title}</h3>
+            <p>{selectedService ? selectedService.name : t.summary.noService}</p>
             <p>{selectedResource ? selectedResource.name : "—"}</p>
             <p>
               {date && time
-                ? `${formatDateLabel(date)} · ${time}`
-                : "Tarih ve saat seçilmedi"}
+                ? `${formatDateLabel(date, lang)} · ${time}`
+                : t.summary.noSlot}
             </p>
           </div>
 
@@ -488,7 +674,7 @@ function Booking() {
           )}
 
           <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
-            {submitting ? "Gönderiliyor…" : "Randevuyu Onayla"}
+            {submitting ? t.submit.submitting : t.submit.idle}
           </button>
         </div>
       </form>

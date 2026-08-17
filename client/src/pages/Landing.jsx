@@ -9,6 +9,7 @@ const CONTENT = {
     htmlLang: "tr",
     ogLocale: "tr_TR",
     path: "/",
+    bookingPath: "/randevu-al",
     seo: {
       title: "Randevu Yönetim Sistemi | Online Randevu & İşletme Paneli",
       description:
@@ -194,6 +195,7 @@ const CONTENT = {
     htmlLang: "en",
     ogLocale: "en_US",
     path: "/en",
+    bookingPath: "/book",
     seo: {
       title: "Appointment Manager | Online Booking & Business Dashboard",
       description:
@@ -470,7 +472,7 @@ function Landing({ lang = "tr" }) {
             </h1>
             <p className="hero-subtitle">{t.hero.subtitle}</p>
             <div className="hero-actions">
-              <Link to="/randevu-al" className="btn btn-primary btn-lg">
+              <Link to={t.bookingPath} className="btn btn-primary btn-lg">
                 {t.hero.ctaPrimary}
               </Link>
               <a href="#fiyatlandirma" className="btn btn-ghost btn-lg">
@@ -671,7 +673,7 @@ function Landing({ lang = "tr" }) {
           <h2>{t.cta.title}</h2>
           <p>{t.cta.subtitle}</p>
           <div className="hero-actions center">
-            <Link to="/randevu-al" className="btn btn-primary btn-lg">
+            <Link to={t.bookingPath} className="btn btn-primary btn-lg">
               {t.cta.primary}
             </Link>
             <a
@@ -697,7 +699,7 @@ function Landing({ lang = "tr" }) {
           </p>
           <div className="landing-footer-links">
             <Link to="/giris">{t.footer.adminLogin}</Link>
-            <Link to="/randevu-al">{t.footer.bookNow}</Link>
+            <Link to={t.bookingPath}>{t.footer.bookNow}</Link>
             <a href="mailto:mehmetyagizmor@gmail.com">{t.footer.contact}</a>
           </div>
         </div>
