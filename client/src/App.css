@@ -1902,6 +1902,13 @@ select:focus-visible {
   gap: 10px;
 }
 
+.btn-lang {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 @media (max-width: 760px) {
   .landing-nav-links {
     display: none;

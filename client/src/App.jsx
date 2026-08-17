@@ -27,11 +27,13 @@ function BusinessBookingRoute() {
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={<Landing lang="tr" />} />
+      <Route path="/en" element={<Landing lang="en" />} />
       <Route path="/giris" element={<Login />} />
       <Route path="/kayit" element={<Register />} />
       <Route path="/musteri-giris" element={<CustomerLogin />} />
-      <Route path="/randevu-al" element={<Booking />} />
+      <Route path="/randevu-al" element={<Booking lang="tr" />} />
+      <Route path="/book" element={<Booking lang="en" />} />
       <Route
         path="/randevularim"
         element={

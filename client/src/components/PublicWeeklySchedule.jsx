@@ -1,8 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 
-const DAY_LABELS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
+const DAY_LABELS = {
+  tr: ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"],
+  en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+};
 const WEEKDAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+const TEXT = {
+  tr: {
+    today: "Bugün",
+    prevWeek: "Önceki hafta",
+    nextWeek: "Sonraki hafta",
+    noHours: "Çalışma saatleri tanımlı değil.",
+    loading: "Müsaitlik yükleniyor…",
+    closed: "Bu saat müsait değil",
+    booked: "Bu saat dolu",
+    free: "Bu saati seçmek için tıklayın",
+  },
+  en: {
+    today: "Today",
+    prevWeek: "Previous week",
+    nextWeek: "Next week",
+    noHours: "No working hours defined.",
+    loading: "Loading availability…",
+    closed: "Not available at this time",
+    booked: "Already booked",
+    free: "Click to select this time",
+  },
+};
 
 function getMonday(date) {
   const d = new Date(date);
@@ -26,18 +52,18 @@ function toISODate(date) {
   return `${y}-${m}-${d}`;
 }
 
-function formatDayNumber(date) {
-  return date.toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+function formatDayNumber(date, locale) {
+  return date.toLocaleDateString(locale, { day: "numeric", month: "short" });
 }
 
-function formatWeekRange(monday) {
+function formatWeekRange(monday, locale) {
   const sunday = addDays(monday, 6);
   const sameMonth = monday.getMonth() === sunday.getMonth();
-  const startLabel = monday.toLocaleDateString("tr-TR", {
+  const startLabel = monday.toLocaleDateString(locale, {
     day: "numeric",
     month: sameMonth ? undefined : "short",
   });
-  const endLabel = sunday.toLocaleDateString("tr-TR", {
+  const endLabel = sunday.toLocaleDateString(locale, {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -87,7 +113,17 @@ function isWithinWorkingHours(dateISO, hour, workingHours) {
  * görünümünün aynısı: satırlarda saatler, sütunlarda günler. Boş bir hücreye
  * tıklanınca ilgili tarih ve saat seçilir.
  */
-function PublicWeeklySchedule({ resourceId, workingHours, slotMinutes, value, onSelect }) {
+function PublicWeeklySchedule({
+  resourceId,
+  workingHours,
+  slotMinutes,
+  value,
+  onSelect,
+  lang = "tr",
+}) {
+  const locale = lang === "en" ? "en-US" : "tr-TR";
+  const t = TEXT[lang] || TEXT.tr;
+  const dayLabels = DAY_LABELS[lang] || DAY_LABELS.tr;
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
   const [availability, setAvailability] = useState({});
   const [loading, setLoading] = useState(false);
@@ -156,7 +192,7 @@ function PublicWeeklySchedule({ resourceId, workingHours, slotMinutes, value, on
     <div className="schedule public-schedule">
       <div className="schedule-header">
         <div>
-          <p className="week-range">{formatWeekRange(weekStart)}</p>
+          <p className="week-range">{formatWeekRange(weekStart, locale)}</p>
         </div>
 
         <div className="schedule-controls">
@@ -166,7 +202,7 @@ function PublicWeeklySchedule({ resourceId, workingHours, slotMinutes, value, on
               className="btn btn-ghost"
               onClick={() => setWeekStart(addDays(weekStart, -7))}
               disabled={!canGoPrev}
-              aria-label="Önceki hafta"
+              aria-label={t.prevWeek}
             >
               ‹
             </button>
@@ -176,13 +212,13 @@ function PublicWeeklySchedule({ resourceId, workingHours, slotMinutes, value, on
               onClick={() => setWeekStart(getMonday(new Date()))}
               disabled={isCurrentWeek}
             >
-              Bugün
+              {t.today}
             </button>
             <button
               type="button"
               className="btn btn-ghost"
               onClick={() => setWeekStart(addDays(weekStart, 7))}
-              aria-label="Sonraki hafta"
+              aria-label={t.nextWeek}
             >
               ›
             </button>
@@ -191,7 +227,7 @@ function PublicWeeklySchedule({ resourceId, workingHours, slotMinutes, value, on
       </div>
 
       {hours.length === 0 ? (
-        <p className="empty-state">Çalışma saatleri tanımlı değil.</p>
+        <p className="empty-state">{t.noHours}</p>
       ) : (
         <div className="schedule-scroll">
           <table className="schedule-table">
@@ -203,8 +239,8 @@ function PublicWeeklySchedule({ resourceId, workingHours, slotMinutes, value, on
                   const isToday = iso === todayISO;
                   return (
                     <th key={iso} className={isToday ? "day-header today" : "day-header"}>
-                      <span className="day-name">{DAY_LABELS[i]}</span>
-                      <span className="day-number">{formatDayNumber(date)}</span>
+                      <span className="day-name">{dayLabels[i]}</span>
+                      <span className="day-number">{formatDayNumber(date, locale)}</span>
                     </th>
                   );
                 })}
@@ -228,11 +264,7 @@ function PublicWeeklySchedule({ resourceId, workingHours, slotMinutes, value, on
                           isToday ? "today-col" : ""
                         }`}
                         title={
-                          status === "closed"
-                            ? "Bu saat müsait değil"
-                            : status === "booked"
-                            ? "Bu saat dolu"
-                            : "Bu saati seçmek için tıklayın"
+                          status === "closed" ? t.closed : status === "booked" ? t.booked : t.free
                         }
                       >
                         {status === "free" ? (
@@ -245,9 +277,7 @@ function PublicWeeklySchedule({ resourceId, workingHours, slotMinutes, value, on
               ))}
             </tbody>
           </table>
-          {loading && (
-            <p className="empty-state schedule-loading">Müsaitlik yükleniyor…</p>
-          )}
+          {loading && <p className="empty-state schedule-loading">{t.loading}</p>}
         </div>
       )}
     </div>
