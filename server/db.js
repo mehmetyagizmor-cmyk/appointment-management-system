@@ -182,6 +182,10 @@ if (needsMultiTenantMigration) {
   const oldCustomers = db.prepare("SELECT * FROM customers").all();
   const businessName = oldSettings ? oldSettings.business_name : "İşletmem";
 
+  // legacy_alter_table açık olmazsa SQLite, RENAME sırasında diğer tablolardaki
+  // foreign key'leri de "*_old" tablosuna yönlendirir (ör. appointments.customer_id
+  // → customers_old); _old tablosu silinince her INSERT "no such table" ile patlar.
+  db.exec("PRAGMA legacy_alter_table = ON");
   db.exec("BEGIN");
   try {
     db.prepare(
@@ -269,6 +273,55 @@ if (needsMultiTenantMigration) {
   } catch (err) {
     db.exec("ROLLBACK");
     throw err;
+  } finally {
+    db.exec("PRAGMA legacy_alter_table = OFF");
+  }
+}
+
+// ---------- Bozuk foreign key onarımı ----------
+// legacy_alter_table düzeltmesinden önce göç etmiş veritabanlarında
+// appointments.customer_id hâlâ silinmiş "customers_old" tablosunu gösterir.
+// appointments tablosu final şemayla yeniden inşa edilerek düzeltilir.
+
+const appointmentsSql = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'appointments'")
+  .get();
+if (appointmentsSql && appointmentsSql.sql.includes("customers_old")) {
+  console.log("> appointments tablosundaki bozuk customers_old referansı onarılıyor...");
+  // foreign_keys transaction içinde değiştirilemez; yeniden inşa sırasında kapalı olmalı.
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec("BEGIN");
+  try {
+    db.exec(`
+      CREATE TABLE appointments_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_id INTEGER REFERENCES businesses(id),
+        customer_name TEXT NOT NULL,
+        phone TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        service_id INTEGER REFERENCES services(id) ON DELETE SET NULL,
+        resource_id INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+        date TEXT NOT NULL,
+        time TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'confirmed',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        email TEXT NOT NULL DEFAULT '',
+        reminder_sent INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    const cols =
+      "id, business_id, customer_name, phone, note, service_id, resource_id, date, time, status, created_at, customer_id, email, reminder_sent";
+    db.exec(`INSERT INTO appointments_new (${cols}) SELECT ${cols} FROM appointments`);
+    db.exec("DROP TABLE appointments");
+    db.exec("ALTER TABLE appointments_new RENAME TO appointments");
+    db.exec("COMMIT");
+    console.log("> appointments onarımı tamamlandı.");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
   }
 }
 
